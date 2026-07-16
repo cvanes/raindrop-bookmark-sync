@@ -87,6 +87,10 @@ async function main() {
       return t;
     });
   extId = new URL(sw.url).host;
+  // Right after install the worker's context can be reachable before its
+  // chrome.* APIs are wired up, so wait until it answers properly.
+  await poll('service worker ready', () =>
+    swEval(`!!(chrome && chrome.bookmarks)`).then(v => v || null).catch(() => null));
   log(`extension ${extId}`);
 
   // --- phase A: seed local bookmarks BEFORE configuring (initial push) ------
@@ -337,6 +341,15 @@ async function main() {
   resp = await sendBg(`{ type: 'force-resync' }`);
   assert(resp.ok, 'force-resync ok: ' + JSON.stringify(resp));
   log('PHASE G2 OK: force-resync message succeeded');
+
+  // --- phase H: options page auto-loads collections when a token is saved ----
+  const opt2 = await openPage(`chrome-extension://${extId}/src/options/options.html`);
+  const opt2Target = await findTarget(t => t.id === opt2.id);
+  const opt2Session = await Session.connect(opt2Target.webSocketDebuggerUrl);
+  await poll('collections auto-load on options open', () =>
+    opt2Session.eval(`document.querySelectorAll('#target-tree .tree-row').length`).then(n => n > 0 ? n : null));
+  opt2Session.close();
+  log('PHASE H OK: options page loads collections automatically');
 
   console.log('E2E_ALL_PASSED');
 }

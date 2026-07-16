@@ -62,6 +62,10 @@ async function init() {
   wireStaticControls();
   await loadSettings();
   await refreshStatus();
+  // With a saved token, populate the collection pickers straight away.
+  if (state.settings?.testToken) {
+    await fetchCollections('target');
+  }
 }
 
 async function loadSettings() {
