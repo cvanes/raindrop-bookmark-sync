@@ -19,8 +19,8 @@ once saved) and reopen a workspace later as a new window.
    For Developers → create an app → copy the **Test token**.
 2. Open the extension's options page, paste the token and press **Verify**.
 3. Pick the target collection to mirror onto your bookmarks bar.
-4. Optionally pick a workspaces collection (the parent for saved windows) and tune the
-   automatic sync interval.
+4. Optionally pick a workspaces collection (the parent for saved windows) and enable
+   automatic sync (off by default) with the interval you want.
 
 The toolbar popup offers **Sync now**, **Save collection** (all tabs in the current window →
 a new workspace sub-collection, then the window closes) and **Load collection** (open a
@@ -32,9 +32,9 @@ workspace as a new window).
   (recursively), bookmarks ↔ raindrops. Other bookmark folders are never touched.
 - Changes you make in the browser (add/edit/move/delete on the bar) push to Raindrop
   immediately.
-- A configurable periodic sync (and **Sync now**) pulls from Raindrop and reconciles, so
-  anything added, edited, moved or deleted in Raindrop itself (web app, mobile, other
-  integrations) flows down automatically.
+- A periodic sync (opt-in, configurable interval) and **Sync now** pull from Raindrop and
+  reconcile, so anything added, edited, moved or deleted in Raindrop itself (web app, mobile,
+  other integrations) flows down too.
 - The bar is kept sorted: folders first, then bookmarks, both alphabetical.
 
 ### Initial sync
@@ -84,4 +84,19 @@ so they are not echoed back to Raindrop.
 
 ## Development
 
-Plain ES modules, no build step. `SPEC.md` documents the module contracts.
+Plain ES modules, no build step, no dependencies.
+
+```
+src/lib/         Raindrop API client and storage helpers
+src/background/  service worker: sync engine, workspaces, message router
+src/options/     settings page
+src/popup/       toolbar popup
+test/            end-to-end test harness
+```
+
+Run the end-to-end tests with `./test/run-e2e.sh` (requires Node 22+, openssl and Microsoft
+Edge). It loads the extension into a disposable browser profile and exercises every sync,
+conflict and workspace flow against a local mock of the Raindrop API - no account needed.
+To run the same suite against the real API: `RD_BASE=https://api.raindrop.io
+RAINDROP_TOKEN=<test token> node test/e2e.mjs` (it creates and removes `SyncTest-*`
+collections in that account).

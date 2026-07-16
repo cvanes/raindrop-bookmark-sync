@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS = {
   targetCollectionPath: '',
   workspacesCollectionId: null, // root collection holding workspace sub-collections
   workspacesCollectionPath: '',
-  autoSyncEnabled: true,
+  autoSyncEnabled: false, // opt-in: the user must explicitly turn on periodic sync
   syncIntervalMinutes: 15, // min 1
 };
 
