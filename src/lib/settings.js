@@ -11,7 +11,6 @@ export const DEFAULT_SETTINGS = {
   workspacesCollectionPath: '',
   autoSyncEnabled: false, // opt-in: the user must explicitly turn on periodic sync
   syncIntervalMinutes: 15, // min 1
-  closeWindowOnSave: true, // close the window after saving/replacing a workspace
 };
 
 const DEFAULT_STATS = {

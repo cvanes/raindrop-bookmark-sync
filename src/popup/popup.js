@@ -3,8 +3,6 @@
 // header, save-this-window at the top, and the workspace list below with
 // per-row open/replace/delete actions.
 
-import { saveSettings } from '../lib/settings.js';
-
 const els = {
   statusDot: document.getElementById('status-dot'),
   statusText: document.getElementById('status-text'),
@@ -18,18 +16,21 @@ const els = {
   syncSpinner: document.getElementById('sync-spinner'),
   syncMessage: document.getElementById('sync-message'),
   saveNameInput: document.getElementById('save-name-input'),
-  saveConfirm: document.getElementById('save-confirm'),
+  saveKeep: document.getElementById('save-keep'),
+  saveClose: document.getElementById('save-close'),
   saveMessage: document.getElementById('save-message'),
-  closeAfterSave: document.getElementById('close-after-save'),
   loadSpinner: document.getElementById('load-spinner'),
   workspaceList: document.getElementById('workspace-list'),
   loadMessage: document.getElementById('load-message'),
   settingsLink: document.getElementById('settings-link'),
 };
 
+// Shared icon language: arrow-into-folder = write it (window stays open),
+// archive box = write it and close the window, bin = delete.
 const ICONS = {
   folder: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
-  replace: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10"/><path d="m9 16 3-3-3-3"/></svg>',
+  write: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10"/><path d="m9 16 3-3-3-3"/></svg>',
+  archive: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
   trash: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
 };
 
@@ -137,7 +138,6 @@ async function refreshStatus() {
 function renderStatus(data) {
   const settings = data && data.settings ? data.settings : {};
   const stats = data && data.stats ? data.stats : {};
-  els.closeAfterSave.checked = settings.closeWindowOnSave !== false;
 
   const status = stats.lastSyncStatus;
   els.statusDot.className =
@@ -217,7 +217,7 @@ async function handleSyncNow() {
 
 // --- save this window ----------------------------------------------------------
 
-async function handleSaveWorkspace() {
+async function handleSaveWorkspace(closeWindow) {
   const name = els.saveNameInput.value.trim();
   if (!name) {
     showMessage(els.saveMessage, 'Enter a name for the collection', 'error');
@@ -226,7 +226,6 @@ async function handleSaveWorkspace() {
 
   clearMessage(els.saveMessage);
   setActionsDisabled(true);
-  const closeWindow = els.closeAfterSave.checked;
 
   try {
     const data = await callBackground({ type: 'save-workspace', name, closeWindow });
@@ -303,14 +302,18 @@ function workspaceRow(workspace) {
   open.appendChild(count);
   open.addEventListener('click', () => handleLoadWorkspace(workspace, open));
 
-  const update = actionButton(ICONS.replace, `Replace “${workspace.title}” with this window's tabs`, 'workspace-update');
-  update.addEventListener('click', () => handleUpdateWorkspace(workspace, update));
+  const update = actionButton(ICONS.write, `Replace “${workspace.title}” with this window's tabs (keep window open)`, 'workspace-update');
+  update.addEventListener('click', () => handleUpdateWorkspace(workspace, update, false));
+
+  const updateClose = actionButton(ICONS.archive, `Replace “${workspace.title}” with this window's tabs and close the window`, 'workspace-update-close');
+  updateClose.addEventListener('click', () => handleUpdateWorkspace(workspace, updateClose, true));
 
   const del = actionButton(ICONS.trash, `Delete “${workspace.title}”`, 'workspace-delete');
   del.addEventListener('click', () => handleDeleteWorkspace(workspace, del));
 
   item.appendChild(open);
   item.appendChild(update);
+  item.appendChild(updateClose);
   item.appendChild(del);
   return item;
 }
@@ -353,11 +356,10 @@ async function handleLoadWorkspace(workspace, button) {
   }
 }
 
-async function handleUpdateWorkspace(workspace, button) {
+async function handleUpdateWorkspace(workspace, button, closeWindow) {
   if (!armConfirm(button, 'Replace?')) return;
 
   button.disabled = true;
-  const closeWindow = els.closeAfterSave.checked;
   try {
     const data = await callBackground({ type: 'update-workspace', collectionId: workspace.id, closeWindow });
     // When the window is closed this popup dies with it; otherwise confirm.
@@ -388,14 +390,14 @@ function wireStaticEvents() {
   els.settingsLink.addEventListener('click', openOptionsPage);
   els.noticeLink.addEventListener('click', openOptionsPage);
   els.syncBtn.addEventListener('click', handleSyncNow);
-  els.saveConfirm.addEventListener('click', handleSaveWorkspace);
-  els.closeAfterSave.addEventListener('change', () => {
-    saveSettings({ closeWindowOnSave: els.closeAfterSave.checked }).catch(() => {});
-  });
+  els.saveKeep.innerHTML = ICONS.write;
+  els.saveClose.innerHTML = ICONS.archive;
+  els.saveKeep.addEventListener('click', () => handleSaveWorkspace(false));
+  els.saveClose.addEventListener('click', () => handleSaveWorkspace(true));
   els.saveNameInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
-      handleSaveWorkspace();
+      handleSaveWorkspace(true); // Enter = the stash-away workflow
     }
   });
 }

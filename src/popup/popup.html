@@ -34,12 +34,11 @@
       <label class="section-label" for="save-name-input">Save this window as</label>
       <div class="save-row">
         <input type="text" id="save-name-input" class="text-input" autocomplete="off">
-        <button type="button" class="btn btn-primary" id="save-confirm">Save</button>
+        <button type="button" class="icon-button save-action" id="save-keep"
+          title="Save (keep window open)" aria-label="Save and keep the window open"></button>
+        <button type="button" class="icon-button save-action" id="save-close"
+          title="Save and close window" aria-label="Save and close the window"></button>
       </div>
-      <label class="check-label">
-        <input type="checkbox" id="close-after-save">
-        Close window after saving
-      </label>
       <p class="inline-message" id="save-message" hidden></p>
     </section>
 
