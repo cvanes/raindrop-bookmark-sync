@@ -314,9 +314,12 @@ function renderWorkspaceList(workspaces) {
   }
 
   workspaces.forEach((workspace) => {
-    const item = document.createElement('button');
-    item.type = 'button';
+    const item = document.createElement('div');
     item.className = 'workspace-item';
+
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'workspace-open';
 
     const title = document.createElement('span');
     title.className = 'workspace-title';
@@ -326,11 +329,43 @@ function renderWorkspaceList(workspaces) {
     count.className = 'workspace-count';
     count.textContent = `${workspace.count} bookmark${workspace.count === 1 ? '' : 's'}`;
 
-    item.appendChild(title);
-    item.appendChild(count);
-    item.addEventListener('click', () => handleLoadWorkspace(workspace.id, item));
+    open.appendChild(title);
+    open.appendChild(count);
+    open.addEventListener('click', () => handleLoadWorkspace(workspace.id, open));
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'workspace-delete';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', `Delete ${workspace.title}`);
+    del.addEventListener('click', () => handleDeleteWorkspace(workspace, del));
+
+    item.appendChild(open);
+    item.appendChild(del);
     els.workspaceList.appendChild(item);
   });
+}
+
+// First click arms a brief "Delete?" confirmation; the second click deletes.
+async function handleDeleteWorkspace(workspace, button) {
+  if (!button.classList.contains('is-confirming')) {
+    button.classList.add('is-confirming');
+    button.textContent = 'Delete?';
+    setTimeout(() => {
+      button.classList.remove('is-confirming');
+      button.textContent = '✕';
+    }, 3000);
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    await callBackground({ type: 'delete-workspace', collectionId: workspace.id });
+    await loadWorkspaceList();
+  } catch (err) {
+    button.disabled = false;
+    showMessage(els.loadMessage, err.message, 'error');
+  }
 }
 
 async function handleLoadWorkspace(collectionId, itemEl) {

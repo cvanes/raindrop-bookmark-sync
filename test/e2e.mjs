@@ -263,6 +263,26 @@ async function main() {
   await swEval(`chrome.windows.remove(${loaded.id}).then(() => true)`);
   log('PHASE F2 OK: load collection reopened the saved tabs with pinned state restored');
 
+  // --- phase F3: delete a workspace from the popup -----------------------------
+  const pop2 = await openPage(`chrome-extension://${extId}/src/popup/popup.html`);
+  const pop2Target = await findTarget(t => t.id === pop2.id);
+  const pop2Session = await Session.connect(pop2Target.webSocketDebuggerUrl);
+  await sleep(700);
+  await pop2Session.eval(`document.getElementById('load-row').click()`);
+  await poll('workspace listed in popup', () =>
+    pop2Session.eval(`[...document.querySelectorAll('.workspace-title')].map(e => e.textContent).join(',')`)
+      .then(t => t.includes('E2E Workspace') ? t : null));
+  await pop2Session.eval(`document.querySelector('.workspace-delete').click()`);
+  const armed = await pop2Session.eval(`document.querySelector('.workspace-delete').textContent`);
+  assert(armed === 'Delete?', 'delete requires confirm click, got ' + armed);
+  await pop2Session.eval(`document.querySelector('.workspace-delete').click()`);
+  await poll('workspace gone from popup list', () =>
+    pop2Session.eval(`document.querySelector('#workspace-list .empty-state') ? 'empty' : null`));
+  const wsCols = await rdCollections();
+  assert(!wsCols.some(c => c.title === 'E2E Workspace'), 'workspace collection deleted remotely');
+  pop2Session.close();
+  log('PHASE F3 OK: workspace deleted from the popup after confirm step');
+
   // --- phase G: changing the target collection resyncs without deleting ------
   const target2 = await rdCreateCollection('SyncTest-E2E-Second');
   const secondRemote = (await rd('POST', '/raindrop', { link: 'https://example.com/second', title: 'E2E Second Remote', collection: { $id: target2._id } })).item;

@@ -8,7 +8,7 @@ import {
   handleBookmarkMoved,
   handleBookmarkRemoved,
 } from './sync.js';
-import { saveWorkspace, listWorkspaces, loadWorkspace } from './workspaces.js';
+import { saveWorkspace, listWorkspaces, loadWorkspace, deleteWorkspace } from './workspaces.js';
 import { getSettings, getSyncState } from '../lib/settings.js';
 import { RaindropApi } from '../lib/api.js';
 
@@ -124,6 +124,10 @@ async function handleMessage(message) {
     case 'load-workspace':
       await loadWorkspace(message.collectionId);
       return { opened: true };
+
+    case 'delete-workspace':
+      await deleteWorkspace(message.collectionId);
+      return { deleted: true };
 
     default:
       throw new Error(`Unknown message type: ${message.type}`);

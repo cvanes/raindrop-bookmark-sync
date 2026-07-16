@@ -49,6 +49,12 @@ export async function listWorkspaces() {
     .map((c) => ({ id: c._id, title: c.title, count: c.count || 0 }));
 }
 
+export async function deleteWorkspace(collectionId) {
+  const settings = await getSettings();
+  const api = new RaindropApi(settings.testToken);
+  await api.deleteCollection(collectionId); // its raindrops go to Raindrop's trash
+}
+
 export async function loadWorkspace(collectionId) {
   const settings = await getSettings();
   const api = new RaindropApi(settings.testToken);

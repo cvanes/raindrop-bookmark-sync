@@ -52,6 +52,10 @@ const state = {
 let intervalDebounceTimer = null;
 let toastTimer = null;
 
+// Per-picker sets of expanded collection ids; everything starts collapsed and
+// ancestors of the current selection are expanded so it is always visible.
+const expandedByPicker = { target: new Set(), workspaces: new Set() };
+
 init();
 
 async function init() {
@@ -161,7 +165,8 @@ function renderTargetTree() {
     return;
   }
   const selectedId = state.settings?.targetCollectionId ?? null;
-  appendTreeNodes(els.targetTree, tree, selectedId, 0, (node) => onSelectTarget(node));
+  expandAncestors('target', selectedId);
+  appendTreeNodes(els.targetTree, tree, selectedId, 0, (node) => onSelectTarget(node), 'target');
 }
 
 function renderWorkspacesTree() {
@@ -169,31 +174,79 @@ function renderWorkspacesTree() {
   els.workspacesTree.innerHTML = '';
   const selectedId = state.settings?.workspacesCollectionId ?? null;
   els.workspacesTree.appendChild(
-    treeRow({ id: null, title: 'None' }, 0, selectedId === null, () => onSelectWorkspaces(null))
+    treeItem({ id: null, title: 'None', children: [] }, 0, selectedId === null, () => onSelectWorkspaces(null), 'workspaces')
   );
   if (tree.length === 0) {
     els.workspacesTree.appendChild(emptyTreeMessage());
     return;
   }
-  appendTreeNodes(els.workspacesTree, tree, selectedId, 0, (node) => onSelectWorkspaces(node.id));
+  expandAncestors('workspaces', selectedId);
+  appendTreeNodes(els.workspacesTree, tree, selectedId, 0, (node) => onSelectWorkspaces(node.id), 'workspaces');
 }
 
-function appendTreeNodes(container, nodes, selectedId, depth, onSelect) {
+function rerenderPicker(picker) {
+  if (picker === 'target') renderTargetTree();
+  else renderWorkspacesTree();
+}
+
+function expandAncestors(picker, id) {
+  const byId = new Map(state.collections.map((c) => [c._id, c]));
+  const seen = new Set();
+  let current = id != null ? byId.get(id)?.parent?.$id : null;
+  while (current != null && byId.has(current) && !seen.has(current)) {
+    seen.add(current);
+    expandedByPicker[picker].add(current);
+    current = byId.get(current)?.parent?.$id;
+  }
+}
+
+function appendTreeNodes(container, nodes, selectedId, depth, onSelect, picker) {
   for (const node of nodes) {
-    container.appendChild(treeRow(node, depth, node.id === selectedId, () => onSelect(node)));
-    if (node.children && node.children.length > 0) {
-      appendTreeNodes(container, node.children, selectedId, depth + 1, onSelect);
+    container.appendChild(treeItem(node, depth, node.id === selectedId, () => onSelect(node), picker));
+    if (node.children.length > 0 && expandedByPicker[picker].has(node.id)) {
+      appendTreeNodes(container, node.children, selectedId, depth + 1, onSelect, picker);
     }
   }
 }
 
-function treeRow(node, depth, isSelected, onClick) {
+// One row: an expand/collapse toggle (or spacer for leaves) beside the
+// selectable radio button. Kept as siblings - buttons must not nest.
+function treeItem(node, depth, isSelected, onSelect, picker) {
+  const item = document.createElement('div');
+  item.className = 'tree-item';
+  item.style.paddingLeft = `${depth * 20}px`;
+
+  if (node.children && node.children.length > 0) {
+    const isExpanded = expandedByPicker[picker].has(node.id);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'tree-toggle';
+    toggle.setAttribute('aria-expanded', String(isExpanded));
+    toggle.setAttribute('aria-label', `${isExpanded ? 'Collapse' : 'Expand'} ${node.title}`);
+    toggle.textContent = '›';
+    toggle.addEventListener('click', () => {
+      const set = expandedByPicker[picker];
+      if (set.has(node.id)) set.delete(node.id);
+      else set.add(node.id);
+      rerenderPicker(picker);
+    });
+    item.appendChild(toggle);
+  } else {
+    const spacer = document.createElement('span');
+    spacer.className = 'tree-toggle-spacer';
+    item.appendChild(spacer);
+  }
+
+  item.appendChild(treeRow(node, isSelected, onSelect));
+  return item;
+}
+
+function treeRow(node, isSelected, onClick) {
   const row = document.createElement('button');
   row.type = 'button';
   row.className = 'tree-row';
   row.setAttribute('role', 'radio');
   row.setAttribute('aria-checked', String(isSelected));
-  row.style.paddingLeft = `${10 + depth * 18}px`;
 
   const icon = document.createElement('span');
   icon.className = 'tree-row-icon';
@@ -208,14 +261,6 @@ function treeRow(node, depth, isSelected, onClick) {
 
   row.appendChild(icon);
   row.appendChild(title);
-
-  if (typeof node.count === 'number') {
-    const count = document.createElement('span');
-    count.className = 'tree-row-count';
-    count.textContent = String(node.count);
-    row.appendChild(count);
-  }
-
   row.addEventListener('click', onClick);
   return row;
 }

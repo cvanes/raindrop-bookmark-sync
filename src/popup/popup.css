@@ -317,10 +317,17 @@ body {
 
 .workspace-item {
   display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.workspace-open {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 8px 10px;
   background: var(--bg-field);
   border: 1px solid var(--border-subtle);
@@ -332,13 +339,33 @@ body {
   cursor: pointer;
 }
 
-.workspace-item:hover:not(:disabled) {
+.workspace-open:hover:not(:disabled) {
   border-color: var(--accent-soft);
 }
 
-.workspace-item:disabled {
+.workspace-open:disabled,
+.workspace-delete:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.workspace-delete {
+  flex-shrink: 0;
+  min-width: 28px;
+  padding: 0 6px;
+  background: var(--bg-field);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.workspace-delete:hover:not(:disabled),
+.workspace-delete.is-confirming {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
 .workspace-title {
