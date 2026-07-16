@@ -2,6 +2,7 @@
 
 import {
   fullSync,
+  resetSyncMappings,
   handleBookmarkCreated,
   handleBookmarkChanged,
   handleBookmarkMoved,
@@ -33,11 +34,23 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // Re-arm the alarm whenever settings change (ignore lone syncState writes).
+// When the target collection changes, the stored id mappings refer to the old
+// collection and would cause the next reconcile to delete the whole bar, so
+// reset them and kick off a fresh union-merge sync into the new target.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   const keys = Object.keys(changes);
   if (keys.length === 1 && keys[0] === 'syncState') return;
   setupAlarm();
+
+  const settings = changes.settings;
+  const oldTarget = settings?.oldValue?.targetCollectionId;
+  const newTarget = settings?.newValue?.targetCollectionId;
+  if (oldTarget != null && newTarget != null && newTarget !== oldTarget) {
+    resetSyncMappings()
+      .then(() => fullSync())
+      .catch((err) => console.error('Resync after target change failed:', err));
+  }
 });
 
 // 'retry-sync' is a one-shot alarm scheduled by sync.js after a failed push.
@@ -74,6 +87,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 async function handleMessage(message) {
   switch (message.type) {
     case 'sync-now':
+      return await fullSync();
+
+    case 'force-resync':
+      await resetSyncMappings();
       return await fullSync();
 
     case 'get-status': {

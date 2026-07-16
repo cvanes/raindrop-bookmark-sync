@@ -37,6 +37,8 @@ const els = {
   syncNowSpinner: document.getElementById('sync-now-spinner'),
   syncNowLabel: document.getElementById('sync-now-label'),
   syncNowStatus: document.getElementById('sync-now-status'),
+  forceResyncBtn: document.getElementById('force-resync-btn'),
+  forceResyncLabel: document.getElementById('force-resync-label'),
 
   toast: document.getElementById('toast'),
 };
@@ -86,7 +88,8 @@ function wireStaticControls() {
   els.autoSyncToggle.addEventListener('change', onAutoSyncToggle);
   els.syncIntervalInput.addEventListener('input', onSyncIntervalInput);
 
-  els.syncNowBtn.addEventListener('click', onSyncNow);
+  els.syncNowBtn.addEventListener('click', () => runSync('sync-now'));
+  els.forceResyncBtn.addEventListener('click', () => runSync('force-resync'));
 }
 
 /* ---------------- Account / token ---------------- */
@@ -292,13 +295,14 @@ function renderStats(stats) {
   els.lastSyncError.textContent = stats.lastSyncStatus === 'error' ? stats.lastError || '' : '';
 }
 
-async function onSyncNow() {
+async function runSync(type) {
   els.syncNowBtn.disabled = true;
+  els.forceResyncBtn.disabled = true;
   els.syncNowSpinner.hidden = false;
   els.syncNowLabel.textContent = 'Syncing…';
   setStatusLine(els.syncNowStatus, '', false);
   try {
-    const response = await sendMessage({ type: 'sync-now' });
+    const response = await sendMessage({ type });
     if (!response.ok) {
       setStatusLine(els.syncNowStatus, response.error || 'Sync failed.', true);
     }
@@ -306,6 +310,7 @@ async function onSyncNow() {
     setStatusLine(els.syncNowStatus, describeError(err), true);
   } finally {
     els.syncNowBtn.disabled = false;
+    els.forceResyncBtn.disabled = false;
     els.syncNowSpinner.hidden = true;
     els.syncNowLabel.textContent = 'Sync now';
     await refreshStatus();

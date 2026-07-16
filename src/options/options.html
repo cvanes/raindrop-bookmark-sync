@@ -148,7 +148,15 @@
             <span class="btn-spinner" id="sync-now-spinner" hidden></span>
             <span id="sync-now-label">Sync now</span>
           </button>
+          <button type="button" id="force-resync-btn" class="btn btn-secondary">
+            <span id="force-resync-label">Force resync</span>
+          </button>
         </div>
+        <p class="help-text">
+          Force resync forgets which bookmarks match which raindrops and rebuilds from
+          scratch as a merge - nothing is deleted. Use it after pointing at a different
+          collection.
+        </p>
         <p class="status-line" id="sync-now-status" role="status" aria-live="polite"></p>
       </section>
     </main>

@@ -31,6 +31,19 @@ export async function getBarNodeId() {
   return bar.id;
 }
 
+// Forget all id mappings (and pending deletions, which refer to the old
+// target). The next sync then behaves like a first sync: a union merge that
+// never deletes. Used when the target collection changes or on force resync.
+export async function resetSyncMappings() {
+  const state = await getSyncState();
+  await saveSyncState({
+    folderMap: {},
+    bookmarkMap: {},
+    pendingDeletions: [],
+    stats: state.stats,
+  });
+}
+
 // --- Full sync (Raindrop wins) -------------------------------------------
 
 export async function fullSync() {

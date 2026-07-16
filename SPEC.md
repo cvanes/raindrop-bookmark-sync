@@ -178,6 +178,9 @@ export async function loadWorkspace(collectionId) // open new window with all li
 - `chrome.runtime.onMessage` router (all handlers return `{ ok, data }` or `{ ok:false, error }`,
   using `sendResponse` + `return true` async pattern):
   - `sync-now` → fullSync → stats
+  - `force-resync` → clear id maps + pending deletions, then fullSync (union merge). The
+    service worker also does this automatically when `targetCollectionId` changes in storage,
+    since stale maps would otherwise delete the whole bar on the next reconcile.
   - `get-status` → `{ settings, stats }`
   - `validate-token` `{ token }` → user `{ fullName?, email? }`
   - `get-collections` `{ token? }` → collection list (for pickers)

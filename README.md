@@ -48,6 +48,11 @@ The first sync is a union merge, so both setup styles work:
 - **Both populated**: items are matched by URL (bookmarks) or title (folders); the remainder
   is merged in both directions with nothing deleted.
 
+Changing the target collection automatically resyncs the same way: previous matches are
+forgotten and the bar merges with the new collection - nothing is deleted. The **Force
+resync** button in settings triggers the same clean rebuild on demand (e.g. after syncing to
+the wrong collection).
+
 ### Workspaces
 
 **Save collection** stores every http(s) tab of the current window (order and pinned state
