@@ -5,7 +5,7 @@ import { getSettings } from '../lib/settings.js';
 
 const HTTP_URL = /^https?:\/\//i;
 
-export async function saveWorkspace(name) {
+export async function saveWorkspace(name, closeWindow = true) {
   const settings = await getSettings();
   if (!settings.testToken) throw new Error('Test token not configured. Add one in the options page.');
   if (!settings.workspacesCollectionId) {
@@ -31,8 +31,7 @@ export async function saveWorkspace(name) {
   }));
   await api.createRaindrops(items);
 
-  // The window's tabs are now safely in Raindrop, so close the window.
-  await chrome.windows.remove(webTabs[0].windowId);
+  if (closeWindow) await chrome.windows.remove(webTabs[0].windowId);
 
   return { id: collection._id, title: collection.title, count: items.length };
 }
@@ -51,7 +50,7 @@ export async function listWorkspaces() {
 
 // Replace an existing workspace's contents with the current window's tabs.
 // The collection (and its id) survive; the old raindrops go to Trash.
-export async function updateWorkspace(collectionId) {
+export async function updateWorkspace(collectionId, closeWindow = true) {
   const settings = await getSettings();
   if (!settings.testToken) throw new Error('Test token not configured. Add one in the options page.');
 
@@ -70,7 +69,7 @@ export async function updateWorkspace(collectionId) {
   }));
   await api.createRaindrops(items);
 
-  await chrome.windows.remove(webTabs[0].windowId);
+  if (closeWindow) await chrome.windows.remove(webTabs[0].windowId);
   return { id: collectionId, count: items.length };
 }
 

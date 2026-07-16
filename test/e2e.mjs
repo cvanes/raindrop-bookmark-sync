@@ -272,13 +272,26 @@ async function main() {
   const upWin = await swEval(`chrome.windows.create({ url: ['https://example.com/newtab1', 'https://example.com/newtab2', 'https://example.com/newtab3'], focused: true }).then(w => w.id)`);
   await sleep(2000);
   await swEval(`chrome.windows.update(${upWin}, { focused: true }).then(() => true)`);
-  resp = await sendBg(`{ type: 'update-workspace', collectionId: ${wsId} }`);
-  assert(resp.ok && resp.data.count === 3, 'update-workspace ok: ' + JSON.stringify(resp));
-  const updated = await rdRaindrops(wsId);
+
+  // closeWindow: false replaces the contents but keeps the window open.
+  const winsBefore = await swEval(`chrome.windows.getAll().then(w => w.length)`);
+  resp = await sendBg(`{ type: 'update-workspace', collectionId: ${wsId}, closeWindow: false }`);
+  assert(resp.ok && resp.data.count === 3, 'update-workspace (keep open) ok: ' + JSON.stringify(resp));
+  const winsKept = await swEval(`chrome.windows.getAll().then(w => w.length)`);
+  assert(winsKept === winsBefore, `window kept open with closeWindow:false (${winsBefore} -> ${winsKept})`);
+  let updated = await rdRaindrops(wsId);
   assert(updated.length === 3 && updated.every(r => r.link.includes('/newtab')),
     'contents replaced: ' + JSON.stringify(updated.map(r => r.link)));
+
+  // Default behaviour still closes the window.
+  await swEval(`chrome.windows.update(${upWin}, { focused: true }).then(() => true)`);
+  resp = await sendBg(`{ type: 'update-workspace', collectionId: ${wsId} }`);
+  assert(resp.ok && resp.data.count === 3, 'update-workspace (close) ok: ' + JSON.stringify(resp));
+  const winsClosed = await swEval(`chrome.windows.getAll().then(w => w.length)`);
+  assert(winsClosed === winsBefore - 1, `window closed by default (${winsBefore} -> ${winsClosed})`);
+  updated = await rdRaindrops(wsId);
   updated.forEach(r => createdRaindropIds.add(r._id));
-  log('PHASE F2b OK: update replaced the workspace contents and closed the window');
+  log('PHASE F2b OK: update replaces contents, honouring closeWindow');
 
   // --- phase F3: delete a workspace from the popup -----------------------------
   const pop2 = await openPage(`chrome-extension://${extId}/src/popup/popup.html`);

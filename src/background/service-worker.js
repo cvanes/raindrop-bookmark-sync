@@ -116,7 +116,7 @@ async function handleMessage(message) {
     }
 
     case 'save-workspace':
-      return await saveWorkspace(message.name);
+      return await saveWorkspace(message.name, message.closeWindow !== false);
 
     case 'list-workspaces':
       return await listWorkspaces();
@@ -126,7 +126,7 @@ async function handleMessage(message) {
       return { opened: true };
 
     case 'update-workspace':
-      return await updateWorkspace(message.collectionId);
+      return await updateWorkspace(message.collectionId, message.closeWindow !== false);
 
     case 'delete-workspace':
       await deleteWorkspace(message.collectionId);

@@ -3,6 +3,8 @@
 // header, save-this-window at the top, and the workspace list below with
 // per-row open/replace/delete actions.
 
+import { saveSettings } from '../lib/settings.js';
+
 const els = {
   statusDot: document.getElementById('status-dot'),
   statusText: document.getElementById('status-text'),
@@ -18,6 +20,7 @@ const els = {
   saveNameInput: document.getElementById('save-name-input'),
   saveConfirm: document.getElementById('save-confirm'),
   saveMessage: document.getElementById('save-message'),
+  closeAfterSave: document.getElementById('close-after-save'),
   loadSpinner: document.getElementById('load-spinner'),
   workspaceList: document.getElementById('workspace-list'),
   loadMessage: document.getElementById('load-message'),
@@ -134,6 +137,7 @@ async function refreshStatus() {
 function renderStatus(data) {
   const settings = data && data.settings ? data.settings : {};
   const stats = data && data.stats ? data.stats : {};
+  els.closeAfterSave.checked = settings.closeWindowOnSave !== false;
 
   const status = stats.lastSyncStatus;
   els.statusDot.className =
@@ -222,10 +226,14 @@ async function handleSaveWorkspace() {
 
   clearMessage(els.saveMessage);
   setActionsDisabled(true);
+  const closeWindow = els.closeAfterSave.checked;
 
   try {
-    await callBackground({ type: 'save-workspace', name });
-    // On success the saved window (and this popup) closes.
+    const data = await callBackground({ type: 'save-workspace', name, closeWindow });
+    // When the window is closed this popup dies with it; otherwise confirm.
+    setActionsDisabled(false);
+    showMessage(els.saveMessage, `Saved ${data.count} tab${data.count === 1 ? '' : 's'} to “${name}”`, 'success');
+    await loadWorkspaceList();
   } catch (err) {
     setActionsDisabled(false);
     showMessage(els.saveMessage, err.message, 'error', {
@@ -349,9 +357,12 @@ async function handleUpdateWorkspace(workspace, button) {
   if (!armConfirm(button, 'Replace?')) return;
 
   button.disabled = true;
+  const closeWindow = els.closeAfterSave.checked;
   try {
-    await callBackground({ type: 'update-workspace', collectionId: workspace.id });
-    // On success the saved window (and this popup) closes.
+    const data = await callBackground({ type: 'update-workspace', collectionId: workspace.id, closeWindow });
+    // When the window is closed this popup dies with it; otherwise confirm.
+    showMessage(els.loadMessage, `Replaced “${workspace.title}” with ${data.count} tab${data.count === 1 ? '' : 's'}`, 'success');
+    await loadWorkspaceList();
   } catch (err) {
     button.disabled = false;
     showMessage(els.loadMessage, err.message, 'error');
@@ -378,6 +389,9 @@ function wireStaticEvents() {
   els.noticeLink.addEventListener('click', openOptionsPage);
   els.syncBtn.addEventListener('click', handleSyncNow);
   els.saveConfirm.addEventListener('click', handleSaveWorkspace);
+  els.closeAfterSave.addEventListener('change', () => {
+    saveSettings({ closeWindowOnSave: els.closeAfterSave.checked }).catch(() => {});
+  });
   els.saveNameInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
