@@ -363,7 +363,8 @@ body {
 }
 
 .workspace-delete:hover:not(:disabled),
-.workspace-delete.is-confirming {
+.workspace-delete.is-confirming,
+.workspace-open.is-confirming {
   color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }

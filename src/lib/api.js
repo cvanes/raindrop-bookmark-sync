@@ -102,6 +102,11 @@ export class RaindropApi {
     await this.#request('DELETE', `/raindrop/${id}`);
   }
 
+  // Removes every raindrop in the collection (they move to Trash).
+  async deleteAllRaindrops(collectionId) {
+    await this.#request('DELETE', `/raindrops/${collectionId}`);
+  }
+
   async #request(method, path, body) {
     const first = await this.#fetchOnce(method, path, body);
     if (first.status === 429) {

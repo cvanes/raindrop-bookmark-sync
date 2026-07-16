@@ -71,9 +71,13 @@ async function handle(req, res) {
       return json(res, 200, { result: true, items: items.slice(page * perpage, (page + 1) * perpage) });
     }
     if (m === 'DELETE') {
-      const ids = body.ids || [];
       let n = 0;
-      for (const id of ids) if (raindrops.delete(id)) n++;
+      if (body.ids) {
+        for (const id of body.ids) if (raindrops.delete(id)) n++;
+      } else {
+        // No ids: remove every raindrop in the collection (like the real API).
+        for (const [rid, r] of raindrops) if (r.collection.$id === cid) { raindrops.delete(rid); n++; }
+      }
       return json(res, 200, { result: true, modified: n });
     }
   }

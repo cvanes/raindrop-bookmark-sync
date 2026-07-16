@@ -249,6 +249,7 @@ async function main() {
   wsItems.forEach(r => createdRaindropIds.add(r._id));
   log('PHASE F1 OK: save collection stored tabs (incl. pinned tag) and closed the window');
 
+  const wsId = resp.data.id;
   const list = await sendBg(`{ type: 'list-workspaces' }`);
   assert(list.ok && list.data.some(w => w.title === 'E2E Workspace'), 'workspace listed');
   resp = await sendBg(`{ type: 'load-workspace', collectionId: ${resp.data.id} }`);
@@ -262,6 +263,18 @@ async function main() {
   assert(restoredPinned && restoredPinned.pinned, 'pinned state restored on load: ' + JSON.stringify(loaded.tabs));
   await swEval(`chrome.windows.remove(${loaded.id}).then(() => true)`);
   log('PHASE F2 OK: load collection reopened the saved tabs with pinned state restored');
+
+  // --- phase F2b: update replaces a workspace's contents ----------------------
+  const upWin = await swEval(`chrome.windows.create({ url: ['https://example.com/newtab1', 'https://example.com/newtab2', 'https://example.com/newtab3'], focused: true }).then(w => w.id)`);
+  await sleep(2000);
+  await swEval(`chrome.windows.update(${upWin}, { focused: true }).then(() => true)`);
+  resp = await sendBg(`{ type: 'update-workspace', collectionId: ${wsId} }`);
+  assert(resp.ok && resp.data.count === 3, 'update-workspace ok: ' + JSON.stringify(resp));
+  const updated = await rdRaindrops(wsId);
+  assert(updated.length === 3 && updated.every(r => r.link.includes('/newtab')),
+    'contents replaced: ' + JSON.stringify(updated.map(r => r.link)));
+  updated.forEach(r => createdRaindropIds.add(r._id));
+  log('PHASE F2b OK: update replaced the workspace contents and closed the window');
 
   // --- phase F3: delete a workspace from the popup -----------------------------
   const pop2 = await openPage(`chrome-extension://${extId}/src/popup/popup.html`);
@@ -285,12 +298,12 @@ async function main() {
 
   await pop2Session.eval(`document.getElementById('load-row').click()`);
   await poll('workspace listed in popup', () =>
-    pop2Session.eval(`[...document.querySelectorAll('.workspace-title')].map(e => e.textContent).join(',')`)
+    pop2Session.eval(`[...document.querySelectorAll('#workspace-list .workspace-title')].map(e => e.textContent).join(',')`)
       .then(t => t.includes('E2E Workspace') ? t : null));
-  await pop2Session.eval(`document.querySelector('.workspace-delete').click()`);
-  const armed = await pop2Session.eval(`document.querySelector('.workspace-delete').textContent`);
+  await pop2Session.eval(`document.querySelector('#workspace-list .workspace-delete').click()`);
+  const armed = await pop2Session.eval(`document.querySelector('#workspace-list .workspace-delete').textContent`);
   assert(armed === 'Delete?', 'delete requires confirm click, got ' + armed);
-  await pop2Session.eval(`document.querySelector('.workspace-delete').click()`);
+  await pop2Session.eval(`document.querySelector('#workspace-list .workspace-delete').click()`);
   await poll('workspace gone from popup list', () =>
     pop2Session.eval(`document.querySelector('#workspace-list .empty-state') ? 'empty' : null`));
   const wsCols = await rdCollections();

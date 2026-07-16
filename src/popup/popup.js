@@ -18,6 +18,8 @@ const els = {
   saveCancel: document.getElementById('save-cancel'),
   saveConfirm: document.getElementById('save-confirm'),
   saveMessage: document.getElementById('save-message'),
+  updateSection: document.getElementById('update-section'),
+  updateList: document.getElementById('update-list'),
   loadRow: document.getElementById('load-row'),
   loadPanel: document.getElementById('load-panel'),
   loadSpinner: document.getElementById('load-spinner'),
@@ -246,6 +248,63 @@ function openSavePanel() {
   els.saveRow.setAttribute('aria-expanded', 'true');
   els.saveNameInput.focus();
   els.saveNameInput.select();
+  populateUpdateList();
+}
+
+// Offer existing workspaces as replace targets inside the save panel.
+async function populateUpdateList() {
+  els.updateSection.hidden = true;
+  els.updateList.innerHTML = '';
+  try {
+    const workspaces = await callBackground({ type: 'list-workspaces' });
+    if (!Array.isArray(workspaces) || workspaces.length === 0) return;
+    workspaces.forEach((workspace) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'workspace-open';
+
+      const title = document.createElement('span');
+      title.className = 'workspace-title';
+      title.textContent = workspace.title;
+
+      const count = document.createElement('span');
+      count.className = 'workspace-count';
+      count.textContent = `${workspace.count} bookmark${workspace.count === 1 ? '' : 's'}`;
+
+      row.appendChild(title);
+      row.appendChild(count);
+      row.addEventListener('click', () => handleUpdateWorkspace(workspace, row, title));
+      els.updateList.appendChild(row);
+    });
+    els.updateSection.hidden = false;
+  } catch {
+    // No replace targets is fine; the section just stays hidden.
+  }
+}
+
+// First click arms a "Replace?" confirmation; the second click overwrites the
+// workspace with this window's tabs (the old contents go to Raindrop's Trash).
+async function handleUpdateWorkspace(workspace, row, title) {
+  if (!row.classList.contains('is-confirming')) {
+    row.classList.add('is-confirming');
+    title.textContent = `Replace “${workspace.title}”?`;
+    setTimeout(() => {
+      row.classList.remove('is-confirming');
+      title.textContent = workspace.title;
+    }, 3000);
+    return;
+  }
+
+  row.disabled = true;
+  try {
+    await callBackground({ type: 'update-workspace', collectionId: workspace.id });
+    // On success the window (and this popup) closes.
+  } catch (err) {
+    row.disabled = false;
+    row.classList.remove('is-confirming');
+    title.textContent = workspace.title;
+    showMessage(els.saveMessage, err.message, 'error');
+  }
 }
 
 function openLoadPanel() {

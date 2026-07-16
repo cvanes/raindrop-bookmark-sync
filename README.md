@@ -57,8 +57,10 @@ the wrong collection).
 
 **Save collection** stores every http(s) tab of the current window (order and pinned state
 included) as a new sub-collection under your workspaces collection, then closes the window.
-**Load collection** reopens it as a new window with pinned tabs restored, and each listed
-workspace can be deleted in place (click the ✕, then confirm).
+The save panel can instead replace an existing collection with the current window's tabs
+(the old contents go to Raindrop's Trash). **Load collection** reopens a workspace as a new
+window with pinned tabs restored, and each listed workspace can be deleted in place (click
+the ✕, then confirm).
 
 ## Conflict handling
 

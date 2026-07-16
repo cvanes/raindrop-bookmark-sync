@@ -8,7 +8,7 @@ import {
   handleBookmarkMoved,
   handleBookmarkRemoved,
 } from './sync.js';
-import { saveWorkspace, listWorkspaces, loadWorkspace, deleteWorkspace } from './workspaces.js';
+import { saveWorkspace, listWorkspaces, loadWorkspace, updateWorkspace, deleteWorkspace } from './workspaces.js';
 import { getSettings, getSyncState } from '../lib/settings.js';
 import { RaindropApi } from '../lib/api.js';
 
@@ -124,6 +124,9 @@ async function handleMessage(message) {
     case 'load-workspace':
       await loadWorkspace(message.collectionId);
       return { opened: true };
+
+    case 'update-workspace':
+      return await updateWorkspace(message.collectionId);
 
     case 'delete-workspace':
       await deleteWorkspace(message.collectionId);

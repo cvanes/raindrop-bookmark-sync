@@ -49,6 +49,31 @@ export async function listWorkspaces() {
     .map((c) => ({ id: c._id, title: c.title, count: c.count || 0 }));
 }
 
+// Replace an existing workspace's contents with the current window's tabs.
+// The collection (and its id) survive; the old raindrops go to Trash.
+export async function updateWorkspace(collectionId) {
+  const settings = await getSettings();
+  if (!settings.testToken) throw new Error('Test token not configured. Add one in the options page.');
+
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  const webTabs = tabs.filter((t) => t.url && HTTP_URL.test(t.url));
+  if (webTabs.length === 0) throw new Error('This window has no http(s) tabs to save');
+
+  const api = new RaindropApi(settings.testToken);
+  await api.deleteAllRaindrops(collectionId);
+  const items = webTabs.map((t, index) => ({
+    link: t.url,
+    title: t.title || t.url,
+    collectionId,
+    order: index,
+    tags: t.pinned ? ['pinned'] : [],
+  }));
+  await api.createRaindrops(items);
+
+  await chrome.windows.remove(webTabs[0].windowId);
+  return { id: collectionId, count: items.length };
+}
+
 export async function deleteWorkspace(collectionId) {
   const settings = await getSettings();
   const api = new RaindropApi(settings.testToken);
