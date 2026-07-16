@@ -268,6 +268,21 @@ async function main() {
   const pop2Target = await findTarget(t => t.id === pop2.id);
   const pop2Session = await Session.connect(pop2Target.webSocketDebuggerUrl);
   await sleep(700);
+
+  // Enter in the save-name input must submit (empty name -> validation error,
+  // which proves the key handler fired without creating anything).
+  await pop2Session.eval(`document.getElementById('save-row').click()`);
+  await pop2Session.eval(`(() => {
+    const input = document.getElementById('save-name-input');
+    input.value = '';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  })()`);
+  const saveMsg = await poll('enter triggers save validation', () =>
+    pop2Session.eval(`document.getElementById('save-message').textContent`).then(t => t.includes('name') ? t : null));
+  assert(saveMsg.includes('Enter a name'), 'enter key submits save: ' + saveMsg);
+  await pop2Session.eval(`document.getElementById('save-cancel').click()`);
+  log('PHASE F0 OK: enter key submits the save panel');
+
   await pop2Session.eval(`document.getElementById('load-row').click()`);
   await poll('workspace listed in popup', () =>
     pop2Session.eval(`[...document.querySelectorAll('.workspace-title')].map(e => e.textContent).join(',')`)

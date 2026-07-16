@@ -395,6 +395,16 @@ function wireStaticEvents() {
     openPanelName = null;
   });
   els.saveConfirm.addEventListener('click', handleSaveWorkspace);
+  els.saveNameInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleSaveWorkspace();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closePanel('save');
+      openPanelName = null;
+    }
+  });
 }
 
 function renderFatalError(err) {
