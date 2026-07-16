@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Raindrop Sync</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="popup" id="popup">
+  <header class="header">
+    <img src="../../icons/icon32.png" alt="" class="header-icon">
+    <div class="header-text">
+      <h1 class="title">Raindrop Sync</h1>
+      <div class="status-line">
+        <span class="status-dot status-dot-idle" id="status-dot"></span>
+        <span id="status-text">Loading…</span>
+      </div>
+      <p class="status-error" id="status-error" hidden></p>
+    </div>
+  </header>
+
+  <div class="notice" id="setup-notice" hidden>
+    <p id="setup-notice-text"></p>
+    <button type="button" class="link-button" id="setup-notice-link">Open settings</button>
+  </div>
+
+  <div class="actions" id="actions" hidden>
+    <div class="action" id="action-sync">
+      <button type="button" class="action-row" id="sync-row">
+        <span class="action-icon" aria-hidden="true">&#8635;</span>
+        <span class="action-label">Sync now</span>
+        <span class="spinner" id="sync-spinner" hidden></span>
+      </button>
+      <p class="inline-message" id="sync-message" hidden></p>
+    </div>
+
+    <div class="action" id="action-save">
+      <button type="button" class="action-row" id="save-row" aria-expanded="false" aria-controls="save-panel">
+        <span class="action-icon" aria-hidden="true">&#43;</span>
+        <span class="action-label">Save collection</span>
+        <span class="chevron" aria-hidden="true">&#8250;</span>
+      </button>
+      <div class="panel" id="save-panel" hidden>
+        <label class="panel-label" for="save-name-input">Name</label>
+        <input type="text" id="save-name-input" class="text-input" autocomplete="off">
+        <p class="hint">Saves all tabs in this window</p>
+        <div class="panel-actions">
+          <button type="button" class="btn btn-secondary" id="save-cancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="save-confirm">Save</button>
+        </div>
+        <p class="inline-message" id="save-message" hidden></p>
+      </div>
+    </div>
+
+    <div class="action" id="action-load">
+      <button type="button" class="action-row" id="load-row" aria-expanded="false" aria-controls="load-panel">
+        <span class="action-icon" aria-hidden="true">&#8681;</span>
+        <span class="action-label">Load collection</span>
+        <span class="chevron" aria-hidden="true">&#8250;</span>
+      </button>
+      <div class="panel" id="load-panel" hidden>
+        <div class="list-spinner" id="load-spinner" hidden>
+          <span class="spinner"></span>
+          <span>Loading…</span>
+        </div>
+        <div class="workspace-list" id="workspace-list"></div>
+        <p class="inline-message" id="load-message" hidden></p>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <button type="button" class="link-button" id="settings-link">Settings</button>
+  </footer>
+</div>
+<script type="module" src="popup.js"></script>
+</body>
+</html>
