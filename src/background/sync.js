@@ -162,6 +162,28 @@ async function reconcilePair(collectionId, folderNodeId, ctx) {
     api, collectionId, folderNodeId, childCollections, localFolders,
     oldFolderMap, newFolderMap, counters, ctx,
   });
+
+  await enforceOrdering(folderNodeId);
+}
+
+// Keep every synced folder sorted: folders first, then bookmarks, both
+// alphabetical. Runs while muted, so these moves are never pushed.
+async function enforceOrdering(folderNodeId) {
+  const children = await chrome.bookmarks.getChildren(folderNodeId);
+  const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+  const desired = [
+    ...children.filter((c) => !c.url).sort(byTitle),
+    ...children.filter((c) => c.url).sort(byTitle),
+  ];
+
+  const current = [...children];
+  for (let i = 0; i < desired.length; i++) {
+    if (current[i].id === desired[i].id) continue;
+    await chrome.bookmarks.move(desired[i].id, { parentId: folderNodeId, index: i });
+    const from = current.findIndex((c) => c.id === desired[i].id);
+    current.splice(from, 1);
+    current.splice(i, 0, desired[i]);
+  }
 }
 
 async function reconcileBookmarks(p) {

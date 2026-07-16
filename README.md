@@ -32,7 +32,27 @@ workspace as a new window).
   (recursively), bookmarks ↔ raindrops. Other bookmark folders are never touched.
 - Changes you make in the browser (add/edit/move/delete on the bar) push to Raindrop
   immediately.
-- A configurable periodic sync (and **Sync now**) pulls from Raindrop and reconciles.
+- A configurable periodic sync (and **Sync now**) pulls from Raindrop and reconciles, so
+  anything added, edited, moved or deleted in Raindrop itself (web app, mobile, other
+  integrations) flows down automatically.
+- The bar is kept sorted: folders first, then bookmarks, both alphabetical.
+
+### Initial sync
+
+The first sync is a union merge, so both setup styles work:
+
+- **Existing bar, empty collection** (first-time setup): everything on the bar is pushed up
+  into the collection, folders included.
+- **Empty bar, existing collection** (new or secondary device): the collection is pulled down
+  onto the bar.
+- **Both populated**: items are matched by URL (bookmarks) or title (folders); the remainder
+  is merged in both directions with nothing deleted.
+
+### Workspaces
+
+**Save collection** stores every http(s) tab of the current window (order and pinned state
+included) as a new sub-collection under your workspaces collection, then closes the window.
+**Load collection** reopens it as a new window with pinned tabs restored.
 
 ## Conflict handling
 

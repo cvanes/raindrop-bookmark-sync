@@ -93,6 +93,7 @@ export async function saveSettings(patch)    // shallow merge and persist
 // {
 //   folderMap:   { [bookmarkFolderNodeId]: collectionId },
 //   bookmarkMap: { [bookmarkNodeId]: raindropId },
+//   pendingDeletions: [{ type: 'raindrop'|'collection', id }],
 //   stats: { lastSyncAt, lastSyncStatus: 'ok'|'error'|null, lastError,
 //            syncCount, bookmarks, folders, created, updated, deleted, apiCalls }
 // }
@@ -129,10 +130,17 @@ export async function handleBookmarkRemoved(id, removeInfo)
    - Create/update (title, url)/move browser nodes so the bar matches Raindrop exactly.
    - Local node mapped but remote gone → remove local node (deleted in Raindrop).
    - Local node unmapped → it is new locally: push it to Raindrop (create collection/raindrop)
-     instead of deleting, then map it.
+     instead of deleting, then map it. This makes the first sync a union merge: it works for
+     pushing an existing bar into an empty collection and for populating a fresh device.
+   - After reconciling each folder, enforce ordering: folders first, then bookmarks, both
+     alphabetical (muted moves, never pushed).
 4. Prune stale map entries. Save state + stats. All bookmark mutations happen while a module
    `muted` flag is set so push handlers ignore self-inflicted events.
 5. Serialise: if a sync is already running, coalesce (return the in-flight promise).
+6. Durability: remote deletes that fail are stored in `syncState.pendingDeletions` and applied
+   at the start of the next sync (before reconciling) so deleted items are never resurrected;
+   if they still fail the sync aborts. Any other failed push schedules a one-shot 'retry-sync'
+   alarm (1 min) and the reconcile converges.
 
 ### Push handlers (immediate local → Raindrop)
 
@@ -155,10 +163,12 @@ export async function listWorkspaces()         // -> [{id,title,count}] children
 export async function loadWorkspace(collectionId) // open new window with all links as tabs
 ```
 
-- save: requires workspacesCollectionId; reads `chrome.tabs.query({currentWindow: true})`,
-  filters http/https, creates collection `name` under the workspaces root, batch-creates
-  raindrops with tab titles.
-- load: fetch raindrops of the collection, `chrome.windows.create({ url: [links...] })`.
+- save: requires testToken + workspacesCollectionId; reads
+  `chrome.tabs.query({currentWindow: true})`, filters http/https, creates collection `name`
+  under the workspaces root, batch-creates raindrops with tab titles, tab order in the `order`
+  field and a `pinned` tag for pinned tabs, then closes the saved window.
+- load: fetch raindrops of the collection sorted by their saved order,
+  `chrome.windows.create({ url: [links...] })`, then re-pin the tabs tagged `pinned`.
 
 ## src/background/service-worker.js
 

@@ -20,10 +20,14 @@ export async function saveWorkspace(name) {
 
   const api = new RaindropApi(settings.testToken);
   const collection = await api.createCollection(title, settings.workspacesCollectionId);
-  const items = webTabs.map((t) => ({
+  // Pinned state is stored as a tag and tab order via the order field, so
+  // loading the workspace can restore the window faithfully.
+  const items = webTabs.map((t, index) => ({
     link: t.url,
     title: t.title || t.url,
     collectionId: collection._id,
+    order: index,
+    tags: t.pinned ? ['pinned'] : [],
   }));
   await api.createRaindrops(items);
 
@@ -52,6 +56,14 @@ export async function loadWorkspace(collectionId) {
   if (!raindrops || raindrops.length === 0) {
     throw new Error('This workspace has no bookmarks to open');
   }
-  const urls = raindrops.map((r) => r.link).filter(Boolean);
-  await chrome.windows.create({ url: urls });
+  // Restore the saved tab order and pinned state (see saveWorkspace).
+  const ordered = raindrops
+    .filter((r) => r.link)
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  const win = await chrome.windows.create({ url: ordered.map((r) => r.link) });
+  await Promise.all(ordered.map((r, index) => {
+    const tab = win.tabs && win.tabs[index];
+    if (!tab || !(r.tags || []).includes('pinned')) return null;
+    return chrome.tabs.update(tab.id, { pinned: true });
+  }));
 }

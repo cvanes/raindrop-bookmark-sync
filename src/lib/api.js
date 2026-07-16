@@ -70,10 +70,12 @@ export class RaindropApi {
   async createRaindrops(items) {
     const created = [];
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
-      const chunk = items.slice(i, i + BATCH_SIZE).map(({ link, title, collectionId }) => ({
+      const chunk = items.slice(i, i + BATCH_SIZE).map(({ link, title, collectionId, tags, order }) => ({
         link,
         title,
         collection: { $id: collectionId },
+        ...(tags && tags.length ? { tags } : {}),
+        ...(order !== undefined ? { order } : {}),
       }));
       const result = await this.#request('POST', '/raindrops', { items: chunk });
       created.push(...(result.items ?? []));
