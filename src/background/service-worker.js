@@ -23,9 +23,13 @@ chrome.bookmarks.onRemoved.addListener(handleBookmarkRemoved);
 
 // --- Lifecycle & alarm ----------------------------------------------------
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   setupAlarm();
   maybeInitialSync();
+  // On first install, take the user straight to setup.
+  if (details.reason === 'install') {
+    chrome.runtime.openOptionsPage();
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {
