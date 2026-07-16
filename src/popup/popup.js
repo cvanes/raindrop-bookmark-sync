@@ -1,5 +1,7 @@
 // Toolbar popup logic. Talks to the background service worker only via
-// chrome.runtime.sendMessage using the message contract described in SPEC.md.
+// chrome.runtime.sendMessage. Everything is on one screen: sync in the
+// header, save-this-window at the top, and the workspace list below with
+// per-row open/replace/delete actions.
 
 const els = {
   statusDot: document.getElementById('status-dot'),
@@ -8,27 +10,26 @@ const els = {
   notice: document.getElementById('setup-notice'),
   noticeText: document.getElementById('setup-notice-text'),
   noticeLink: document.getElementById('setup-notice-link'),
-  actions: document.getElementById('actions'),
-  syncRow: document.getElementById('sync-row'),
+  content: document.getElementById('content'),
+  syncBtn: document.getElementById('sync-btn'),
+  syncGlyph: document.getElementById('sync-glyph'),
   syncSpinner: document.getElementById('sync-spinner'),
   syncMessage: document.getElementById('sync-message'),
-  saveRow: document.getElementById('save-row'),
-  savePanel: document.getElementById('save-panel'),
   saveNameInput: document.getElementById('save-name-input'),
-  saveCancel: document.getElementById('save-cancel'),
   saveConfirm: document.getElementById('save-confirm'),
   saveMessage: document.getElementById('save-message'),
-  updateSection: document.getElementById('update-section'),
-  updateList: document.getElementById('update-list'),
-  loadRow: document.getElementById('load-row'),
-  loadPanel: document.getElementById('load-panel'),
   loadSpinner: document.getElementById('load-spinner'),
   workspaceList: document.getElementById('workspace-list'),
   loadMessage: document.getElementById('load-message'),
   settingsLink: document.getElementById('settings-link'),
 };
 
-let openPanelName = null;
+const ICONS = {
+  folder: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
+  replace: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>',
+  trash: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+};
+
 let syncMessageTimer = null;
 
 // --- messaging helpers -----------------------------------------------------
@@ -64,7 +65,7 @@ async function callBackground(message) {
 function openOptionsPage() {
   try {
     chrome.runtime.openOptionsPage();
-  } catch (err) {
+  } catch {
     // best effort only
   }
 }
@@ -75,8 +76,7 @@ function formatRelativeTime(value) {
   if (!value) return 'Never synced';
   const then = new Date(value).getTime();
   if (Number.isNaN(then)) return 'Never synced';
-  const diffMs = Date.now() - then;
-  const diffMin = Math.round(diffMs / 60000);
+  const diffMin = Math.round((Date.now() - then) / 60000);
   if (diffMin < 1) return 'Last sync just now';
   if (diffMin < 60) return `Last sync ${diffMin} min ago`;
   const diffHour = Math.round(diffMin / 60);
@@ -90,15 +90,6 @@ function defaultWorkspaceName() {
   return `Workspace ${label}`;
 }
 
-function extractCount(data) {
-  if (!data) return null;
-  if (typeof data.count === 'number') return data.count;
-  if (typeof data.tabCount === 'number') return data.tabCount;
-  if (typeof data.bookmarks === 'number') return data.bookmarks;
-  if (Array.isArray(data.items)) return data.items.length;
-  return null;
-}
-
 function looksLikeMissingWorkspacesCollection(message) {
   return /workspace/i.test(message) && /(not configured|not set|missing)/i.test(message);
 }
@@ -108,12 +99,14 @@ function looksLikeMissingWorkspacesCollection(message) {
 function clearMessage(el) {
   el.hidden = true;
   el.textContent = '';
-  el.className = 'inline-message';
+  el.className = el.classList.contains('header-message')
+    ? 'inline-message header-message'
+    : 'inline-message';
 }
 
 function showMessage(el, text, kind, { withSettingsLink = false } = {}) {
-  el.innerHTML = '';
-  el.className = `inline-message inline-message-${kind}`;
+  clearMessage(el);
+  el.classList.add(`inline-message-${kind}`);
   el.appendChild(document.createTextNode(text));
   if (withSettingsLink) {
     const link = document.createElement('button');
@@ -131,9 +124,10 @@ function showMessage(el, text, kind, { withSettingsLink = false } = {}) {
 async function refreshStatus() {
   try {
     const data = await callBackground({ type: 'get-status' });
-    renderStatus(data);
+    return renderStatus(data);
   } catch (err) {
     renderStatusFailure(err);
+    return false;
   }
 }
 
@@ -154,7 +148,7 @@ function renderStatus(data) {
     els.statusError.textContent = '';
   }
 
-  renderSetupState(settings);
+  return renderSetupState(settings);
 }
 
 function renderStatusFailure(err) {
@@ -163,31 +157,34 @@ function renderStatusFailure(err) {
   els.statusError.textContent = err.message;
   els.statusError.hidden = false;
   els.notice.hidden = true;
-  els.actions.hidden = true;
+  els.content.hidden = true;
 }
 
+// Returns true when the extension is configured enough to show the actions.
 function renderSetupState(settings) {
   const missingToken = !settings.testToken;
   const missingCollection = !settings.targetCollectionId;
 
   if (!missingToken && !missingCollection) {
     els.notice.hidden = true;
-    els.actions.hidden = false;
-    return;
+    els.content.hidden = false;
+    return true;
   }
 
-  els.actions.hidden = true;
+  els.content.hidden = true;
   els.notice.hidden = false;
   els.noticeText.textContent = missingToken
     ? 'Add your Raindrop test token to get started.'
     : 'Choose a collection to sync to.';
+  return false;
 }
 
-// --- actions disabled state --------------------------------------------------
+// --- disabled state ----------------------------------------------------------
 
 function setActionsDisabled(disabled) {
-  document.querySelectorAll('#actions button').forEach((btn) => {
-    btn.disabled = disabled;
+  els.syncBtn.disabled = disabled;
+  els.content.querySelectorAll('button, input').forEach((el) => {
+    el.disabled = disabled;
   });
 }
 
@@ -197,6 +194,7 @@ async function handleSyncNow() {
   clearTimeout(syncMessageTimer);
   clearMessage(els.syncMessage);
   setActionsDisabled(true);
+  els.syncGlyph.hidden = true;
   els.syncSpinner.hidden = false;
 
   try {
@@ -207,114 +205,13 @@ async function handleSyncNow() {
   } catch (err) {
     showMessage(els.syncMessage, err.message, 'error');
   } finally {
+    els.syncGlyph.hidden = false;
     els.syncSpinner.hidden = true;
     setActionsDisabled(false);
   }
 }
 
-// --- panel open/close ------------------------------------------------------
-
-function closePanel(name) {
-  if (name === 'save') {
-    els.savePanel.hidden = true;
-    els.saveRow.setAttribute('aria-expanded', 'false');
-  } else if (name === 'load') {
-    els.loadPanel.hidden = true;
-    els.loadRow.setAttribute('aria-expanded', 'false');
-  }
-}
-
-function togglePanel(name) {
-  if (openPanelName === name) {
-    closePanel(name);
-    openPanelName = null;
-    return;
-  }
-  if (openPanelName) {
-    closePanel(openPanelName);
-  }
-  openPanelName = name;
-  if (name === 'save') {
-    openSavePanel();
-  } else if (name === 'load') {
-    openLoadPanel();
-  }
-}
-
-function openSavePanel() {
-  clearMessage(els.saveMessage);
-  els.saveNameInput.value = defaultWorkspaceName();
-  els.savePanel.hidden = false;
-  els.saveRow.setAttribute('aria-expanded', 'true');
-  els.saveNameInput.focus();
-  els.saveNameInput.select();
-  populateUpdateList();
-}
-
-// Offer existing workspaces as replace targets inside the save panel.
-async function populateUpdateList() {
-  els.updateSection.hidden = true;
-  els.updateList.innerHTML = '';
-  try {
-    const workspaces = await callBackground({ type: 'list-workspaces' });
-    if (!Array.isArray(workspaces) || workspaces.length === 0) return;
-    workspaces.forEach((workspace) => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'workspace-open';
-
-      const title = document.createElement('span');
-      title.className = 'workspace-title';
-      title.textContent = workspace.title;
-
-      const count = document.createElement('span');
-      count.className = 'workspace-count';
-      count.textContent = `${workspace.count} bookmark${workspace.count === 1 ? '' : 's'}`;
-
-      row.appendChild(title);
-      row.appendChild(count);
-      row.addEventListener('click', () => handleUpdateWorkspace(workspace, row, title));
-      els.updateList.appendChild(row);
-    });
-    els.updateSection.hidden = false;
-  } catch {
-    // No replace targets is fine; the section just stays hidden.
-  }
-}
-
-// First click arms a "Replace?" confirmation; the second click overwrites the
-// workspace with this window's tabs (the old contents go to Raindrop's Trash).
-async function handleUpdateWorkspace(workspace, row, title) {
-  if (!row.classList.contains('is-confirming')) {
-    row.classList.add('is-confirming');
-    title.textContent = `Replace “${workspace.title}”?`;
-    setTimeout(() => {
-      row.classList.remove('is-confirming');
-      title.textContent = workspace.title;
-    }, 3000);
-    return;
-  }
-
-  row.disabled = true;
-  try {
-    await callBackground({ type: 'update-workspace', collectionId: workspace.id });
-    // On success the window (and this popup) closes.
-  } catch (err) {
-    row.disabled = false;
-    row.classList.remove('is-confirming');
-    title.textContent = workspace.title;
-    showMessage(els.saveMessage, err.message, 'error');
-  }
-}
-
-function openLoadPanel() {
-  clearMessage(els.loadMessage);
-  els.loadPanel.hidden = false;
-  els.loadRow.setAttribute('aria-expanded', 'true');
-  loadWorkspaceList();
-}
-
-// --- save collection ---------------------------------------------------------
+// --- save this window ----------------------------------------------------------
 
 async function handleSaveWorkspace() {
   const name = els.saveNameInput.value.trim();
@@ -324,25 +221,20 @@ async function handleSaveWorkspace() {
   }
 
   clearMessage(els.saveMessage);
-  els.saveConfirm.disabled = true;
-  els.saveCancel.disabled = true;
+  setActionsDisabled(true);
 
   try {
-    const data = await callBackground({ type: 'save-workspace', name });
-    const count = extractCount(data);
-    const confirmation = count === null ? `Saved “${name}”` : `Saved ${count} tab${count === 1 ? '' : 's'} to “${name}”`;
-    showMessage(els.saveMessage, confirmation, 'success');
+    await callBackground({ type: 'save-workspace', name });
+    // On success the saved window (and this popup) closes.
   } catch (err) {
+    setActionsDisabled(false);
     showMessage(els.saveMessage, err.message, 'error', {
       withSettingsLink: looksLikeMissingWorkspacesCollection(err.message),
     });
-  } finally {
-    els.saveConfirm.disabled = false;
-    els.saveCancel.disabled = false;
   }
 }
 
-// --- load collection -----------------------------------------------------------
+// --- workspace list --------------------------------------------------------------
 
 async function loadWorkspaceList() {
   els.workspaceList.innerHTML = '';
@@ -373,49 +265,101 @@ function renderWorkspaceList(workspaces) {
   }
 
   workspaces.forEach((workspace) => {
-    const item = document.createElement('div');
-    item.className = 'workspace-item';
-
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'workspace-open';
-
-    const title = document.createElement('span');
-    title.className = 'workspace-title';
-    title.textContent = workspace.title;
-
-    const count = document.createElement('span');
-    count.className = 'workspace-count';
-    count.textContent = `${workspace.count} bookmark${workspace.count === 1 ? '' : 's'}`;
-
-    open.appendChild(title);
-    open.appendChild(count);
-    open.addEventListener('click', () => handleLoadWorkspace(workspace.id, open));
-
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'workspace-delete';
-    del.textContent = '✕';
-    del.setAttribute('aria-label', `Delete ${workspace.title}`);
-    del.addEventListener('click', () => handleDeleteWorkspace(workspace, del));
-
-    item.appendChild(open);
-    item.appendChild(del);
-    els.workspaceList.appendChild(item);
+    els.workspaceList.appendChild(workspaceRow(workspace));
   });
 }
 
-// First click arms a brief "Delete?" confirmation; the second click deletes.
-async function handleDeleteWorkspace(workspace, button) {
-  if (!button.classList.contains('is-confirming')) {
-    button.classList.add('is-confirming');
-    button.textContent = 'Delete?';
-    setTimeout(() => {
-      button.classList.remove('is-confirming');
-      button.textContent = '✕';
-    }, 3000);
-    return;
+function workspaceRow(workspace) {
+  const item = document.createElement('div');
+  item.className = 'workspace-item';
+
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'workspace-open';
+  open.title = `Open “${workspace.title}” in a new window`;
+
+  const glyph = document.createElement('span');
+  glyph.className = 'workspace-glyph';
+  glyph.innerHTML = ICONS.folder;
+
+  const title = document.createElement('span');
+  title.className = 'workspace-title';
+  title.textContent = workspace.title;
+
+  const count = document.createElement('span');
+  count.className = 'workspace-count';
+  count.textContent = String(workspace.count);
+
+  open.appendChild(glyph);
+  open.appendChild(title);
+  open.appendChild(count);
+  open.addEventListener('click', () => handleLoadWorkspace(workspace, open));
+
+  const update = actionButton(ICONS.replace, `Replace “${workspace.title}” with this window's tabs`, 'workspace-update');
+  update.addEventListener('click', () => handleUpdateWorkspace(workspace, update));
+
+  const del = actionButton(ICONS.trash, `Delete “${workspace.title}”`, 'workspace-delete');
+  del.addEventListener('click', () => handleDeleteWorkspace(workspace, del));
+
+  item.appendChild(open);
+  item.appendChild(update);
+  item.appendChild(del);
+  return item;
+}
+
+function actionButton(icon, label, extraClass) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `workspace-action ${extraClass}`;
+  button.innerHTML = icon;
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  return button;
+}
+
+// First click arms a brief confirmation; the second click runs the action.
+function armConfirm(button, label) {
+  if (button.classList.contains('is-confirming')) return true;
+  const original = button.innerHTML;
+  button.classList.add('is-confirming');
+  button.textContent = label;
+  setTimeout(() => {
+    if (!button.isConnected) return;
+    button.classList.remove('is-confirming');
+    button.innerHTML = original;
+  }, 3000);
+  return false;
+}
+
+async function handleLoadWorkspace(workspace, button) {
+  clearMessage(els.loadMessage);
+  setActionsDisabled(true);
+
+  try {
+    await callBackground({ type: 'load-workspace', collectionId: workspace.id });
+    window.close();
+  } catch (err) {
+    setActionsDisabled(false);
+    if (button) button.disabled = false;
+    showMessage(els.loadMessage, err.message, 'error');
   }
+}
+
+async function handleUpdateWorkspace(workspace, button) {
+  if (!armConfirm(button, 'Replace?')) return;
+
+  button.disabled = true;
+  try {
+    await callBackground({ type: 'update-workspace', collectionId: workspace.id });
+    // On success the saved window (and this popup) closes.
+  } catch (err) {
+    button.disabled = false;
+    showMessage(els.loadMessage, err.message, 'error');
+  }
+}
+
+async function handleDeleteWorkspace(workspace, button) {
+  if (!armConfirm(button, 'Delete?')) return;
 
   button.disabled = true;
   try {
@@ -427,41 +371,17 @@ async function handleDeleteWorkspace(workspace, button) {
   }
 }
 
-async function handleLoadWorkspace(collectionId, itemEl) {
-  clearMessage(els.loadMessage);
-  setActionsDisabled(true);
-
-  try {
-    await callBackground({ type: 'load-workspace', collectionId });
-    window.close();
-  } catch (err) {
-    setActionsDisabled(false);
-    if (itemEl) itemEl.disabled = false;
-    showMessage(els.loadMessage, err.message, 'error');
-  }
-}
-
 // --- wiring ---------------------------------------------------------------------
 
 function wireStaticEvents() {
   els.settingsLink.addEventListener('click', openOptionsPage);
   els.noticeLink.addEventListener('click', openOptionsPage);
-  els.syncRow.addEventListener('click', handleSyncNow);
-  els.saveRow.addEventListener('click', () => togglePanel('save'));
-  els.loadRow.addEventListener('click', () => togglePanel('load'));
-  els.saveCancel.addEventListener('click', () => {
-    closePanel('save');
-    openPanelName = null;
-  });
+  els.syncBtn.addEventListener('click', handleSyncNow);
   els.saveConfirm.addEventListener('click', handleSaveWorkspace);
   els.saveNameInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       handleSaveWorkspace();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      closePanel('save');
-      openPanelName = null;
     }
   });
 }
@@ -478,7 +398,9 @@ function renderFatalError(err) {
 async function init() {
   try {
     wireStaticEvents();
-    await refreshStatus();
+    els.saveNameInput.value = defaultWorkspaceName();
+    const configured = await refreshStatus();
+    if (configured) await loadWorkspaceList();
   } catch (err) {
     renderFatalError(err);
   }

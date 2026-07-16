@@ -17,60 +17,37 @@
       </div>
       <p class="status-error" id="status-error" hidden></p>
     </div>
+    <button type="button" class="icon-button" id="sync-btn" title="Sync bookmarks bar now" aria-label="Sync bookmarks bar now">
+      <span id="sync-glyph" aria-hidden="true">&#8635;</span>
+      <span class="spinner" id="sync-spinner" hidden></span>
+    </button>
   </header>
+  <p class="inline-message header-message" id="sync-message" hidden></p>
 
   <div class="notice" id="setup-notice" hidden>
     <p id="setup-notice-text"></p>
     <button type="button" class="link-button" id="setup-notice-link">Open settings</button>
   </div>
 
-  <div class="actions" id="actions" hidden>
-    <div class="action" id="action-sync">
-      <button type="button" class="action-row" id="sync-row">
-        <span class="action-icon" aria-hidden="true">&#8635;</span>
-        <span class="action-label">Sync now</span>
-        <span class="spinner" id="sync-spinner" hidden></span>
-      </button>
-      <p class="inline-message" id="sync-message" hidden></p>
-    </div>
-
-    <div class="action" id="action-save">
-      <button type="button" class="action-row" id="save-row" aria-expanded="false" aria-controls="save-panel">
-        <span class="action-icon" aria-hidden="true">&#43;</span>
-        <span class="action-label">Save collection</span>
-        <span class="chevron" aria-hidden="true">&#8250;</span>
-      </button>
-      <div class="panel" id="save-panel" hidden>
-        <label class="panel-label" for="save-name-input">Name</label>
+  <div class="content" id="content" hidden>
+    <section class="section">
+      <label class="section-label" for="save-name-input">Save this window as</label>
+      <div class="save-row">
         <input type="text" id="save-name-input" class="text-input" autocomplete="off">
-        <p class="hint">Saves all tabs in this window</p>
-        <div class="panel-actions">
-          <button type="button" class="btn btn-secondary" id="save-cancel">Cancel</button>
-          <button type="button" class="btn btn-primary" id="save-confirm">Save</button>
-        </div>
-        <div id="update-section" hidden>
-          <p class="panel-label">Or replace an existing collection</p>
-          <div class="workspace-list" id="update-list"></div>
-        </div>
-        <p class="inline-message" id="save-message" hidden></p>
+        <button type="button" class="btn btn-primary" id="save-confirm">Save</button>
       </div>
-    </div>
+      <p class="inline-message" id="save-message" hidden></p>
+    </section>
 
-    <div class="action" id="action-load">
-      <button type="button" class="action-row" id="load-row" aria-expanded="false" aria-controls="load-panel">
-        <span class="action-icon" aria-hidden="true">&#8681;</span>
-        <span class="action-label">Load collection</span>
-        <span class="chevron" aria-hidden="true">&#8250;</span>
-      </button>
-      <div class="panel" id="load-panel" hidden>
-        <div class="list-spinner" id="load-spinner" hidden>
-          <span class="spinner"></span>
-          <span>Loading…</span>
-        </div>
-        <div class="workspace-list" id="workspace-list"></div>
-        <p class="inline-message" id="load-message" hidden></p>
+    <section class="section">
+      <p class="section-label">Saved collections <span class="section-hint">· click one to open it</span></p>
+      <div class="list-spinner" id="load-spinner" hidden>
+        <span class="spinner"></span>
+        <span>Loading…</span>
       </div>
-    </div>
+      <div class="workspace-list" id="workspace-list"></div>
+      <p class="inline-message" id="load-message" hidden></p>
+    </section>
   </div>
 
   <footer class="footer">

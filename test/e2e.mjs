@@ -147,7 +147,7 @@ async function main() {
   const popTarget = await findTarget(t => t.id === pop.id);
   const popSession = await Session.connect(popTarget.webSocketDebuggerUrl);
   await sleep(700);
-  await popSession.eval(`document.getElementById('sync-row').click()`);
+  await popSession.eval(`document.getElementById('sync-btn').click()`);
   await poll('popup shows Synced', () =>
     popSession.eval(`document.getElementById('sync-message').textContent`).then(t => t.includes('Synced') ? t : null));
   await popSession.send('Page.enable');
@@ -282,9 +282,8 @@ async function main() {
   const pop2Session = await Session.connect(pop2Target.webSocketDebuggerUrl);
   await sleep(700);
 
-  // Enter in the save-name input must submit (empty name -> validation error,
-  // which proves the key handler fired without creating anything).
-  await pop2Session.eval(`document.getElementById('save-row').click()`);
+  // Enter in the always-visible save-name input must submit (empty name ->
+  // validation error, which proves the key handler fired without creating anything).
   await pop2Session.eval(`(() => {
     const input = document.getElementById('save-name-input');
     input.value = '';
@@ -293,10 +292,8 @@ async function main() {
   const saveMsg = await poll('enter triggers save validation', () =>
     pop2Session.eval(`document.getElementById('save-message').textContent`).then(t => t.includes('name') ? t : null));
   assert(saveMsg.includes('Enter a name'), 'enter key submits save: ' + saveMsg);
-  await pop2Session.eval(`document.getElementById('save-cancel').click()`);
-  log('PHASE F0 OK: enter key submits the save panel');
+  log('PHASE F0 OK: enter key submits the save input');
 
-  await pop2Session.eval(`document.getElementById('load-row').click()`);
   await poll('workspace listed in popup', () =>
     pop2Session.eval(`[...document.querySelectorAll('#workspace-list .workspace-title')].map(e => e.textContent).join(',')`)
       .then(t => t.includes('E2E Workspace') ? t : null));
