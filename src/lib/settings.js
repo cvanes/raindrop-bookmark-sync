@@ -44,6 +44,9 @@ export async function getSyncState() {
   return {
     folderMap: { ...(state?.folderMap ?? {}) },
     bookmarkMap: { ...(state?.bookmarkMap ?? {}) },
+    // Remote deletes that failed (e.g. offline) and must be applied before
+    // the next reconcile, so deleted items are not resurrected locally.
+    pendingDeletions: [...(state?.pendingDeletions ?? [])],
     stats: { ...DEFAULT_STATS, ...state?.stats },
   };
 }

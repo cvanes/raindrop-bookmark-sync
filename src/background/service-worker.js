@@ -40,9 +40,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   setupAlarm();
 });
 
+// 'retry-sync' is a one-shot alarm scheduled by sync.js after a failed push.
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name !== ALARM_NAME) return;
-  fullSync().catch((err) => console.error('Periodic sync failed:', err));
+  if (alarm.name !== ALARM_NAME && alarm.name !== 'retry-sync') return;
+  fullSync().catch((err) => console.error('Sync failed:', err));
 });
 
 async function setupAlarm() {

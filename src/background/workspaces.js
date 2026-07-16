@@ -27,6 +27,9 @@ export async function saveWorkspace(name) {
   }));
   await api.createRaindrops(items);
 
+  // The window's tabs are now safely in Raindrop, so close the window.
+  await chrome.windows.remove(webTabs[0].windowId);
+
   return { id: collection._id, title: collection.title, count: items.length };
 }
 

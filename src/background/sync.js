@@ -54,11 +54,12 @@ async function runFullSync() {
   }
 
   const api = new RaindropApi(settings.testToken);
-  const prev = (await getSyncState()) || {};
+  const prev = await getSyncState();
   const counters = newCounters();
 
   muted = true;
   try {
+    await drainPendingDeletions(api, prev);
     const collections = await api.getAllCollections();
     const byParent = groupCollectionsByParent(collections);
 
@@ -76,9 +77,12 @@ async function runFullSync() {
     await reconcilePair(settings.targetCollectionId, barId, ctx);
 
     const stats = buildStats(prev.stats || {}, ctx, api, 'ok', null);
+    // Re-read pending deletions: a push handler may have queued one mid-sync.
+    const current = await getSyncState();
     await saveSyncState({
       folderMap: ctx.newFolderMap,
       bookmarkMap: ctx.newBookmarkMap,
+      pendingDeletions: current.pendingDeletions,
       stats,
     });
     return stats;
@@ -87,6 +91,29 @@ async function runFullSync() {
     throw err;
   } finally {
     muted = false;
+  }
+}
+
+// Apply remote deletes that previously failed (e.g. offline). Reconciling
+// without them would resurrect the deleted items locally, so abort the sync
+// if any still cannot be applied.
+async function drainPendingDeletions(api, state) {
+  const pending = state.pendingDeletions || [];
+  if (pending.length === 0) return;
+
+  const remaining = [];
+  for (const d of pending) {
+    try {
+      if (d.type === 'collection') await api.deleteCollection(d.id);
+      else await api.deleteRaindrop(d.id);
+    } catch (err) {
+      if (!/status 404/.test(err.message)) remaining.push(d); // 404: already gone
+    }
+  }
+  state.pendingDeletions = remaining;
+  await saveSyncState(state);
+  if (remaining.length > 0) {
+    throw new Error(`Could not apply ${remaining.length} pending remote deletion(s)`);
   }
 }
 
@@ -238,8 +265,13 @@ export async function handleBookmarkCreated(id, node) {
     if (!parentCol) return;
 
     const counters = newCounters();
-    await pushNode(node, parentCol, api, state, counters);
-    await finishPush(state, api, counters);
+    try {
+      await pushNode(node, parentCol, api, state, counters);
+    } catch (err) {
+      schedulePushRetry(err);
+    } finally {
+      await finishPush(state, api, counters);
+    }
   });
 }
 
@@ -252,19 +284,24 @@ export async function handleBookmarkChanged(id, changeInfo) {
     if (!(await isInBarSubtree(id, barId))) return;
 
     const counters = newCounters();
-    const rdId = state.bookmarkMap[id];
-    if (rdId) {
-      const [node] = await chrome.bookmarks.get(id);
-      await api.updateRaindrop(rdId, { link: node.url, title: node.title });
-      counters.updated++;
-    } else {
-      const colId = state.folderMap[id];
-      if (colId && changeInfo.title != null) {
-        await api.updateCollection(colId, { title: changeInfo.title });
+    try {
+      const rdId = state.bookmarkMap[id];
+      if (rdId) {
+        const [node] = await chrome.bookmarks.get(id);
+        await api.updateRaindrop(rdId, { link: node.url, title: node.title });
         counters.updated++;
+      } else {
+        const colId = state.folderMap[id];
+        if (colId && changeInfo.title != null) {
+          await api.updateCollection(colId, { title: changeInfo.title });
+          counters.updated++;
+        }
       }
+    } catch (err) {
+      schedulePushRetry(err);
+    } finally {
+      await finishPush(state, api, counters);
     }
-    await finishPush(state, api, counters);
   });
 }
 
@@ -281,31 +318,36 @@ export async function handleBookmarkMoved(id, moveInfo) {
     if (!nowIn && !wasIn) return;
 
     const counters = newCounters();
-    if (nowIn && !wasIn) {
-      const parentCol = resolveParentCollectionId(moveInfo.parentId, state.folderMap, barId, settings.targetCollectionId);
-      if (parentCol) {
-        const [node] = await chrome.bookmarks.get(id);
-        await pushNode(node, parentCol, api, state, counters);
+    try {
+      if (nowIn && !wasIn) {
+        const parentCol = resolveParentCollectionId(moveInfo.parentId, state.folderMap, barId, settings.targetCollectionId);
+        if (parentCol) {
+          const [node] = await chrome.bookmarks.get(id);
+          await pushNode(node, parentCol, api, state, counters);
+        }
+      } else if (!nowIn && wasIn) {
+        await deleteRemoteForNode(id, api, state, counters);
+      } else {
+        // Moved within the subtree -> re-parent remotely.
+        const parentCol = resolveParentCollectionId(moveInfo.parentId, state.folderMap, barId, settings.targetCollectionId);
+        const rdId = state.bookmarkMap[id];
+        const colId = state.folderMap[id];
+        if (rdId && parentCol) {
+          await api.updateRaindrop(rdId, { collectionId: parentCol });
+          counters.updated++;
+        } else if (colId && parentCol) {
+          await api.updateCollection(colId, { parent: { $id: parentCol } });
+          counters.updated++;
+        } else if (parentCol) {
+          const [node] = await chrome.bookmarks.get(id);
+          await pushNode(node, parentCol, api, state, counters);
+        }
       }
-    } else if (!nowIn && wasIn) {
-      await deleteRemoteForNode(id, api, state, counters);
-    } else {
-      // Moved within the subtree -> re-parent remotely.
-      const parentCol = resolveParentCollectionId(moveInfo.parentId, state.folderMap, barId, settings.targetCollectionId);
-      const rdId = state.bookmarkMap[id];
-      const colId = state.folderMap[id];
-      if (rdId && parentCol) {
-        await api.updateRaindrop(rdId, { collectionId: parentCol });
-        counters.updated++;
-      } else if (colId && parentCol) {
-        await api.updateCollection(colId, { parent: { $id: parentCol } });
-        counters.updated++;
-      } else if (parentCol) {
-        const [node] = await chrome.bookmarks.get(id);
-        await pushNode(node, parentCol, api, state, counters);
-      }
+    } catch (err) {
+      schedulePushRetry(err);
+    } finally {
+      await finishPush(state, api, counters);
     }
-    await finishPush(state, api, counters);
   });
 }
 
@@ -375,41 +417,47 @@ async function pushNode(node, parentCollectionId, api, state, counters) {
   }
 }
 
+// Attempt a remote delete; on failure queue it durably so the next sync can
+// apply it before reconciling (otherwise the item would be resurrected).
+async function attemptRemoteDelete(type, remoteId, api, state, counters) {
+  try {
+    if (type === 'collection') await api.deleteCollection(remoteId);
+    else await api.deleteRaindrop(remoteId);
+    counters.deleted++;
+  } catch (err) {
+    state.pendingDeletions.push({ type, id: remoteId });
+    schedulePushRetry(err);
+  }
+}
+
 // Delete the remote for a node still present locally (used when moved out).
 async function deleteRemoteForNode(id, api, state, counters) {
   const rdId = state.bookmarkMap[id];
   if (rdId) {
-    await api.deleteRaindrop(rdId);
+    await attemptRemoteDelete('raindrop', rdId, api, state, counters);
     delete state.bookmarkMap[id];
-    counters.deleted++;
     return;
   }
   const colId = state.folderMap[id];
   if (colId) {
-    await api.deleteCollection(colId); // Raindrop trashes contents
+    // Raindrop trashes the collection's contents with it.
+    await attemptRemoteDelete('collection', colId, api, state, counters);
     await dropSubtreeMaps(id, state);
     delete state.folderMap[id];
-    counters.deleted++;
   }
 }
 
 // Delete the remote for a removed node, using removeInfo.node (which still
 // carries the removed subtree) since the node is gone from the tree.
 async function deleteRemovedNode(node, id, api, state, counters) {
-  const rdId = state.bookmarkMap[id];
   if (node.url) {
-    if (rdId) {
-      await api.deleteRaindrop(rdId);
-      counters.deleted++;
-    }
+    const rdId = state.bookmarkMap[id];
+    if (rdId) await attemptRemoteDelete('raindrop', rdId, api, state, counters);
     delete state.bookmarkMap[id];
     return;
   }
   const colId = state.folderMap[id];
-  if (colId) {
-    await api.deleteCollection(colId); // trashes contents remotely
-    counters.deleted++;
-  }
+  if (colId) await attemptRemoteDelete('collection', colId, api, state, counters);
   delete state.folderMap[id];
   dropMapsFromNode(node, state);
 }
@@ -449,4 +497,12 @@ async function finishPush(state, api, counters) {
 
 function newCounters() {
   return { created: 0, updated: 0, deleted: 0 };
+}
+
+// A push failed (e.g. offline): log it and schedule a sync to converge.
+// The 'retry-sync' alarm is handled by the service worker alongside the
+// periodic one.
+function schedulePushRetry(err) {
+  console.error('Push to Raindrop failed, will retry via sync:', err);
+  chrome.alarms.create('retry-sync', { delayInMinutes: 1 });
 }
