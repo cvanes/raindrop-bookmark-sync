@@ -15,6 +15,11 @@
   box-sizing: border-box;
 }
 
+/* The hidden attribute must win over display rules on the same elements. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg-page);
