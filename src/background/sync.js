@@ -56,6 +56,7 @@ async function runFullSync() {
   const api = new RaindropApi(settings.testToken);
   const prev = await getSyncState();
   const counters = newCounters();
+  let ctx = null;
 
   muted = true;
   try {
@@ -63,7 +64,7 @@ async function runFullSync() {
     const collections = await api.getAllCollections();
     const byParent = groupCollectionsByParent(collections);
 
-    const ctx = {
+    ctx = {
       api,
       byParent,
       oldFolderMap: prev.folderMap || {},
@@ -87,7 +88,17 @@ async function runFullSync() {
     });
     return stats;
   } catch (err) {
-    await updateStats({ lastSyncStatus: 'error', lastError: err.message });
+    // Keep any mappings made before the failure (merged over the previous
+    // ones, since the reconcile did not visit everything) so the retry does
+    // not repeat completed work, then retry soon - 429s clear within a minute.
+    const current = await getSyncState();
+    await saveSyncState({
+      folderMap: { ...current.folderMap, ...(ctx ? ctx.newFolderMap : {}) },
+      bookmarkMap: { ...current.bookmarkMap, ...(ctx ? ctx.newBookmarkMap : {}) },
+      pendingDeletions: current.pendingDeletions,
+      stats: { ...current.stats, lastSyncStatus: 'error', lastError: err.message },
+    });
+    chrome.alarms.create('retry-sync', { delayInMinutes: 2 });
     throw err;
   } finally {
     muted = false;
@@ -208,6 +219,7 @@ async function reconcileBookmarks(p) {
     }
   }
 
+  const toPush = [];
   for (const b of localBookmarks) {
     if (!available.has(b.id)) continue;
     if (oldBookmarkMap[b.id]) {
@@ -216,10 +228,20 @@ async function reconcileBookmarks(p) {
       counters.deleted++;
     } else {
       // New locally -> push it up instead of deleting.
-      const item = await api.createRaindrop({ link: b.url, title: b.title, collectionId });
-      newBookmarkMap[b.id] = item._id;
-      counters.created++;
+      toPush.push(b);
     }
+  }
+
+  // Batch-create new local bookmarks (100 per request) to stay well inside
+  // the rate limit on large initial syncs.
+  if (toPush.length > 0) {
+    const created = await api.createRaindrops(
+      toPush.map((b) => ({ link: b.url, title: b.title, collectionId }))
+    );
+    created.forEach((item, i) => {
+      if (toPush[i]) newBookmarkMap[toPush[i].id] = item._id;
+    });
+    counters.created += toPush.length;
   }
 }
 

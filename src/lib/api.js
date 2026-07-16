@@ -28,7 +28,13 @@ export class RaindropApi {
       this.#request('GET', '/collections'),
       this.#request('GET', '/collections/childrens'),
     ]);
-    return [...(roots.items ?? []), ...(children.items ?? [])];
+    // The two endpoints can both return the same collection (e.g. when it
+    // sits inside a sidebar group), so dedupe by id.
+    const byId = new Map();
+    for (const c of [...(roots.items ?? []), ...(children.items ?? [])]) {
+      byId.set(c._id, c);
+    }
+    return [...byId.values()];
   }
 
   async createCollection(title, parentId) {
