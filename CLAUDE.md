@@ -8,6 +8,12 @@ Chrome/Edge MV3 extension: two-way sync between the bookmarks bar (Chrome) / fav
 
 Plain ES modules, no build step, no dependencies. UK spelling in user-facing text.
 
+## Versioning
+
+Bump the `version` in `manifest.json` with every user-visible change (semver-ish:
+patch for fixes, minor for features) - browsers surface it on the extensions page and
+it is the only way to tell which build a user is running.
+
 - `src/lib/api.js` - Raindrop REST client (`RaindropApi`) + `buildCollectionTree`/
   `collectionPath` helpers. Handles pagination (perpage 50), batch chunking (100), one retry
   on HTTP 429 and dedupes `/collections` + `/collections/childrens` (both can return the
