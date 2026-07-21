@@ -94,10 +94,14 @@ src/lib/         Raindrop API client and storage helpers
 src/background/  service worker: sync engine, workspaces, message router
 src/options/     settings page
 src/popup/       toolbar popup
+test/            Node tests + in-memory chrome/Raindrop fakes
 ```
 
-Syntax-check changed files with `node --check <file>.js`. For behavioural checks, load the
-unpacked extension into Chrome Beta (`chrome://extensions` → Developer mode → Load unpacked)
-and exercise the flows manually; the chrome-devtools MCP can drive the options page and
-popup. There is no automated e2e harness - manual verification against a throwaway
-Raindrop collection is the workflow.
+Run the tests with `npm test` (or `node --test test/*.test.mjs`) - pure Node, no browser and
+no dependencies. The sync engine runs against an in-memory `chrome.*` and a `fetch` stub
+standing in for the Raindrop API, covering the reconcile logic, the empty-folder guard,
+default-path resolution and the push handlers. Syntax-check changed files with `node --check`.
+
+For UI/visual checks, load the unpacked extension into Chrome Beta (`chrome://extensions` →
+Developer mode → Load unpacked) and exercise the flows manually; it talks to the real
+Raindrop account, so use a throwaway collection.

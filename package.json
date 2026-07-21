@@ -1,0 +1,9 @@
+{
+  "name": "raindrop-bookmark-sync",
+  "private": true,
+  "type": "module",
+  "description": "Two-way sync between the bookmarks bar and a Raindrop.io collection (Chrome/Edge MV3 extension). Version lives in manifest.json.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

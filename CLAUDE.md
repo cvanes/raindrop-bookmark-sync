@@ -59,10 +59,16 @@ up a fix. Never land a code, UI or manifest change without also incrementing the
 ## Testing
 
 - Syntax check: `node --check` each changed `.js` file.
-- No automated e2e harness (the old one required Microsoft Edge, since branded Google
-  Chrome - all channels, incl. Beta - blocks `--load-extension`). Verify behaviour
-  manually: load the unpacked extension into Chrome Beta (`chrome://extensions` →
-  Developer mode → Load unpacked) and exercise the flows; the chrome-devtools MCP can
-  drive the options page and popup.
-- The extension mutates real bookmarks and the real Raindrop account, so test against a
-  throwaway Raindrop collection - never point it at data you care about.
+- Unit + integration tests: `npm test` (or `node --test test/*.test.mjs`). Pure Node,
+  no browser, no dependencies. `test/fakes.mjs` provides an in-memory `chrome.*`
+  (bookmarks tree + storage) and a `fetch` stub backed by an in-memory Raindrop model,
+  so the real `sync.js`/`api.js`/`settings.js` run unchanged. `test/sync.test.mjs`
+  covers the reconcile engine (union-merge push, pull-down, remote-wins, the
+  empty-folder guard on/off, remote-empty pruning, default-path resolution, sync-stat
+  stamping, push handlers); `test/api.test.mjs` covers the pure API helpers. Add a test
+  here for any change to the sync logic.
+- No browser-based e2e harness (the old one required Microsoft Edge, since branded Google
+  Chrome - all channels, incl. Beta - blocks `--load-extension`). For UI/visual checks,
+  load the unpacked extension into Chrome Beta (`chrome://extensions` → Developer mode →
+  Load unpacked); the chrome-devtools MCP can drive the options page and popup. It hits
+  the real Raindrop account, so point it at a throwaway collection, never real data.
