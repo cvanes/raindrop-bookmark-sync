@@ -1,5 +1,10 @@
-import { getSettings, saveSettings } from '../lib/settings.js';
-import { buildCollectionTree, collectionPath } from '../lib/api.js';
+import {
+  getSettings,
+  saveSettings,
+  DEFAULT_TARGET_PATH,
+  DEFAULT_WORKSPACES_PATH,
+} from '../lib/settings.js';
+import { buildCollectionTree, collectionPath, findCollectionIdByPath } from '../lib/api.js';
 
 const DEBOUNCE_MS = 600;
 
@@ -16,6 +21,7 @@ const els = {
 
   autoSyncToggle: document.getElementById('auto-sync-toggle'),
   syncIntervalInput: document.getElementById('sync-interval-input'),
+  deleteEmptyToggle: document.getElementById('delete-empty-toggle'),
 
   workspacesTree: document.getElementById('workspaces-tree'),
   workspacesSelectedPath: document.getElementById('workspaces-selected-path'),
@@ -80,6 +86,7 @@ async function loadSettings() {
 function populateControls(settings) {
   els.tokenInput.value = settings.testToken || '';
   els.autoSyncToggle.checked = !!settings.autoSyncEnabled;
+  els.deleteEmptyToggle.checked = settings.deleteEmptyFolders !== false;
   els.syncIntervalInput.value = settings.syncIntervalMinutes || 1;
   els.targetSelectedPath.textContent = settings.targetCollectionPath || 'None';
   els.workspacesSelectedPath.textContent = settings.workspacesCollectionPath || 'None';
@@ -94,6 +101,7 @@ function wireStaticControls() {
   els.refreshWorkspacesBtn.addEventListener('click', () => fetchCollections('workspaces'));
 
   els.autoSyncToggle.addEventListener('change', onAutoSyncToggle);
+  els.deleteEmptyToggle.addEventListener('change', onDeleteEmptyToggle);
   els.syncIntervalInput.addEventListener('input', onSyncIntervalInput);
 
   els.syncNowBtn.addEventListener('click', () => runSync('sync-now'));
@@ -153,11 +161,26 @@ async function fetchCollections(which) {
       return;
     }
     state.collections = response.data || [];
+    await applyDefaultSelections();
     renderTargetTree();
     renderWorkspacesTree();
     setStatusLine(statusEl, '', false);
   } catch (err) {
     setStatusLine(statusEl, describeError(err), true);
+  }
+}
+
+// If a picker has no saved selection, fall back to the default path (matched
+// against the loaded collections) and persist it, so a fresh machine ends up
+// configured without any manual selection.
+async function applyDefaultSelections() {
+  if (!state.settings?.targetCollectionId) {
+    const id = findCollectionIdByPath(state.collections, DEFAULT_TARGET_PATH);
+    if (id) await persistSettings({ targetCollectionId: id, targetCollectionPath: DEFAULT_TARGET_PATH }, true);
+  }
+  if (!state.settings?.workspacesCollectionId) {
+    const id = findCollectionIdByPath(state.collections, DEFAULT_WORKSPACES_PATH);
+    if (id) await persistSettings({ workspacesCollectionId: id, workspacesCollectionPath: DEFAULT_WORKSPACES_PATH }, true);
   }
 }
 
@@ -296,6 +319,10 @@ async function onAutoSyncToggle() {
   await persistSettings({ autoSyncEnabled: els.autoSyncToggle.checked });
 }
 
+async function onDeleteEmptyToggle() {
+  await persistSettings({ deleteEmptyFolders: els.deleteEmptyToggle.checked });
+}
+
 function onSyncIntervalInput() {
   clearTimeout(intervalDebounceTimer);
   intervalDebounceTimer = setTimeout(async () => {
@@ -368,11 +395,11 @@ async function runSync(type) {
 
 /* ---------------- Shared helpers ---------------- */
 
-async function persistSettings(patch) {
+async function persistSettings(patch, silent = false) {
   try {
     await saveSettings(patch);
     state.settings = { ...state.settings, ...patch };
-    showToast('Settings saved', false);
+    if (!silent) showToast('Settings saved', false);
   } catch (err) {
     showToast(describeError(err), true);
   }

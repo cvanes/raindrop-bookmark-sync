@@ -323,22 +323,13 @@ body {
 }
 
 .workspace-item:hover .workspace-action,
-.workspace-action:focus-visible,
-.workspace-action.is-confirming {
+.workspace-action:focus-visible {
   opacity: 1;
 }
 
 .workspace-action:hover:not(:disabled) {
   color: var(--text-primary);
   border-color: var(--border-strong);
-}
-
-.workspace-action.is-confirming {
-  width: auto;
-  padding: 0 9px;
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-  font-weight: 600;
 }
 
 .workspace-open:disabled,
@@ -428,6 +419,76 @@ body {
   padding: 16px;
   font-size: 13px;
   color: var(--danger);
+}
+
+/* Confirmation modal */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 8, 16, 0.6);
+}
+
+.modal {
+  width: 100%;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.modal-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.modal-message {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn {
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-ghost:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-card-hover);
+}
+
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  opacity: 0.9;
 }
 
 button:focus-visible,

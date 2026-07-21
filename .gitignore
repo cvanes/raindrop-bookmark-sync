@@ -1,4 +1,3 @@
 .claude/
 .DS_Store
-test/*.pem
-test/*.png
+dist/

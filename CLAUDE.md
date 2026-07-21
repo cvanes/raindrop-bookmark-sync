@@ -10,9 +10,11 @@ Plain ES modules, no build step, no dependencies. UK spelling in user-facing tex
 
 ## Versioning
 
-Bump the `version` in `manifest.json` with every user-visible change (semver-ish:
-patch for fixes, minor for features) - browsers surface it on the extensions page and
-it is the only way to tell which build a user is running.
+Bump the `version` in `manifest.json` on **every** change, without exception (semver-ish:
+patch for fixes, minor for features) - and do it in the same commit as the change. The
+version on the browser's extensions page is the only way to tell which build a machine is
+running, so a reliable bump is what makes it possible to confirm every machine has picked
+up a fix. Never land a code, UI or manifest change without also incrementing the version.
 
 - `src/lib/api.js` - Raindrop REST client (`RaindropApi`) + `buildCollectionTree`/
   `collectionPath` helpers. Handles pagination (perpage 50), batch chunking (100), one retry
@@ -44,14 +46,23 @@ it is the only way to tell which build a user is running.
   blow the 120 req/min rate limit on large bars.
 - Only the bookmarks bar subtree (node id '1') is ever touched.
 - Synced folders are kept sorted: folders first, then bookmarks, alphabetical.
+- Empty folders are never pushed up: a folder with no bookmarks anywhere in its subtree
+  never gets a remote collection (guards against other bookmark-sync tools' placeholder
+  folders spawning junk collections). The parent collection chain is instead created
+  lazily by `ensureParentCollection` the moment real content lands inside.
+- `deleteEmptyFolders` (setting, default on) prunes folders that reconcile to empty -
+  both the local folder and its remote collection - during `fullSync`.
+- When `targetCollectionId` / `workspacesCollectionId` are unset, they resolve by path
+  against the account (`DEFAULT_TARGET_PATH` = `Chrome/Bookmarks`, `DEFAULT_WORKSPACES_PATH`
+  = `Chrome/Workspaces`) and the resolved id is persisted, so a fresh machine self-configures.
 
 ## Testing
 
 - Syntax check: `node --check` each changed `.js` file.
-- Full e2e: `./test/run-e2e.sh` - loads the extension into a disposable Microsoft Edge
-  profile (branded Chrome stable ignores `--load-extension`) and drives it over raw CDP
-  against a local mock of the Raindrop API (`test/mock-raindrop.mjs`, reached via a loopback
-  proxy so `https://api.raindrop.io` resolves to the mock). All phases must pass.
-- To run the e2e against the real API instead: `RD_BASE=https://api.raindrop.io
-  RAINDROP_TOKEN=<test token> node test/e2e.mjs` (creates and cleans up `SyncTest-*`
-  collections in that account).
+- No automated e2e harness (the old one required Microsoft Edge, since branded Google
+  Chrome - all channels, incl. Beta - blocks `--load-extension`). Verify behaviour
+  manually: load the unpacked extension into Chrome Beta (`chrome://extensions` →
+  Developer mode → Load unpacked) and exercise the flows; the chrome-devtools MCP can
+  drive the options page and popup.
+- The extension mutates real bookmarks and the real Raindrop account, so test against a
+  throwaway Raindrop collection - never point it at data you care about.

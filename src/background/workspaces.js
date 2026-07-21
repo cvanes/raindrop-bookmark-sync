@@ -1,16 +1,22 @@
 // Workspaces: save/load all tabs of a window as a Raindrop sub-collection.
 
-import { RaindropApi } from '../lib/api.js';
-import { getSettings } from '../lib/settings.js';
+import { RaindropApi, findCollectionIdByPath } from '../lib/api.js';
+import { getSettings, saveSettings, DEFAULT_WORKSPACES_PATH } from '../lib/settings.js';
 
 const HTTP_URL = /^https?:\/\//i;
+
+// Explicit workspaces root wins; otherwise resolve the default path and persist
+// it so a fresh machine works without reconfiguring.
+async function resolveWorkspacesCollectionId(settings, collections) {
+  if (settings.workspacesCollectionId) return settings.workspacesCollectionId;
+  const id = findCollectionIdByPath(collections, DEFAULT_WORKSPACES_PATH);
+  if (id) await saveSettings({ workspacesCollectionId: id, workspacesCollectionPath: DEFAULT_WORKSPACES_PATH });
+  return id;
+}
 
 export async function saveWorkspace(name, closeWindow = true) {
   const settings = await getSettings();
   if (!settings.testToken) throw new Error('Test token not configured. Add one in the options page.');
-  if (!settings.workspacesCollectionId) {
-    throw new Error('Workspaces collection not configured. Choose one in the options page.');
-  }
   const title = (name || '').trim();
   if (!title) throw new Error('A workspace name is required');
 
@@ -19,7 +25,11 @@ export async function saveWorkspace(name, closeWindow = true) {
   if (webTabs.length === 0) throw new Error('This window has no http(s) tabs to save');
 
   const api = new RaindropApi(settings.testToken);
-  const collection = await api.createCollection(title, settings.workspacesCollectionId);
+  const parentId = await resolveWorkspacesCollectionId(settings, await api.getAllCollections());
+  if (!parentId) {
+    throw new Error(`Workspaces collection not configured. Choose one, or create "${DEFAULT_WORKSPACES_PATH}".`);
+  }
+  const collection = await api.createCollection(title, parentId);
   // Pinned state is stored as a tag and tab order via the order field, so
   // loading the workspace can restore the window faithfully.
   const items = webTabs.map((t, index) => ({
@@ -38,12 +48,14 @@ export async function saveWorkspace(name, closeWindow = true) {
 
 export async function listWorkspaces() {
   const settings = await getSettings();
-  if (!settings.workspacesCollectionId) return [];
+  if (!settings.testToken) return [];
 
   const api = new RaindropApi(settings.testToken);
   const collections = await api.getAllCollections();
+  const parentId = await resolveWorkspacesCollectionId(settings, collections);
+  if (!parentId) return [];
   return collections
-    .filter((c) => c.parent && c.parent.$id === settings.workspacesCollectionId)
+    .filter((c) => c.parent && c.parent.$id === parentId)
     .sort((a, b) => a.title.localeCompare(b.title))
     .map((c) => ({ id: c._id, title: c.title, count: c.count || 0 }));
 }

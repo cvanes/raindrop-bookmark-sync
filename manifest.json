@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Raindrop Bookmark Sync",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Two-way sync between your bookmarks bar and a Raindrop.io collection.",
   "permissions": ["bookmarks", "storage", "alarms", "tabs"],
   "host_permissions": ["https://api.raindrop.io/*"],

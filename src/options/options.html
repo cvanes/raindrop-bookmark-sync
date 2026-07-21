@@ -81,6 +81,21 @@
           <label for="sync-interval-input">Sync interval (minutes)</label>
           <input type="number" id="sync-interval-input" min="1" step="1" class="number-input" />
         </div>
+
+        <div class="field field-row">
+          <label class="switch-label" for="delete-empty-toggle">
+            <span>Delete empty folders on sync</span>
+            <span class="switch">
+              <input type="checkbox" id="delete-empty-toggle" role="switch" />
+              <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            </span>
+          </label>
+        </div>
+        <p class="help-text">
+          Removes folders that hold no bookmarks (locally and in Raindrop) during each
+          sync, and never pushes empty folders up. Leave this on to keep placeholder
+          folders from other bookmark-sync tools from piling up.
+        </p>
       </section>
 
       <!-- Workspaces -->

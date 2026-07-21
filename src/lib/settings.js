@@ -3,6 +3,12 @@
 const SETTINGS_KEY = 'settings';
 const SYNC_STATE_KEY = 'syncState';
 
+// When no target/workspaces collection is configured, fall back to these paths
+// (resolved by name against the account) so a fresh machine auto-configures
+// without re-selecting collections. Create these collections in Raindrop once.
+export const DEFAULT_TARGET_PATH = 'Chrome/Bookmarks';
+export const DEFAULT_WORKSPACES_PATH = 'Chrome/Workspaces';
+
 export const DEFAULT_SETTINGS = {
   testToken: '',
   targetCollectionId: null, // raindrop collection mirrored onto the bookmarks bar
@@ -10,7 +16,8 @@ export const DEFAULT_SETTINGS = {
   workspacesCollectionId: null, // root collection holding workspace sub-collections
   workspacesCollectionPath: '',
   autoSyncEnabled: false, // opt-in: the user must explicitly turn on periodic sync
-  syncIntervalMinutes: 15, // min 1
+  syncIntervalMinutes: 30, // min 1
+  deleteEmptyFolders: true, // remove folders with no bookmarks (local + remote) on sync
 };
 
 const DEFAULT_STATS = {

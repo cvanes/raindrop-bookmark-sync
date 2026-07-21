@@ -1,12 +1,14 @@
 // Sync engine: pull reconcile (Raindrop wins) + immediate local -> Raindrop push handlers.
 // The whole bookmarks bar subtree mirrors the target collection's subtree.
 
-import { RaindropApi } from '../lib/api.js';
+import { RaindropApi, findCollectionIdByPath } from '../lib/api.js';
 import {
   getSettings,
+  saveSettings,
   getSyncState,
   saveSyncState,
   updateStats,
+  DEFAULT_TARGET_PATH,
 } from '../lib/settings.js';
 
 // --- Module state ---------------------------------------------------------
@@ -58,10 +60,11 @@ export async function fullSync() {
 
 async function runFullSync() {
   const settings = await getSettings();
-  if (!settings.testToken || !settings.targetCollectionId) {
+  if (!settings.testToken) {
     await updateStats({
       lastSyncStatus: 'error',
-      lastError: 'Not configured: set a test token and a target collection',
+      lastError: 'Not configured: set a test token',
+      lastSyncAt: Date.now(),
     });
     return (await getSyncState()).stats;
   }
@@ -75,6 +78,15 @@ async function runFullSync() {
   try {
     await drainPendingDeletions(api, prev);
     const collections = await api.getAllCollections();
+    const targetId = await resolveTargetCollectionId(settings, collections);
+    if (!targetId) {
+      await updateStats({
+        lastSyncStatus: 'error',
+        lastError: `No sync target: choose a collection or create "${DEFAULT_TARGET_PATH}"`,
+        lastSyncAt: Date.now(),
+      });
+      return (await getSyncState()).stats;
+    }
     const byParent = groupCollectionsByParent(collections);
 
     ctx = {
@@ -85,10 +97,11 @@ async function runFullSync() {
       newFolderMap: {},
       newBookmarkMap: {},
       counters,
+      deleteEmptyFolders: settings.deleteEmptyFolders !== false,
     };
 
     const barId = await getBarNodeId();
-    await reconcilePair(settings.targetCollectionId, barId, ctx);
+    await reconcilePair(targetId, barId, ctx);
 
     const stats = buildStats(prev.stats || {}, ctx, api, 'ok', null);
     // Re-read pending deletions: a push handler may have queued one mid-sync.
@@ -109,13 +122,23 @@ async function runFullSync() {
       folderMap: { ...current.folderMap, ...(ctx ? ctx.newFolderMap : {}) },
       bookmarkMap: { ...current.bookmarkMap, ...(ctx ? ctx.newBookmarkMap : {}) },
       pendingDeletions: current.pendingDeletions,
-      stats: { ...current.stats, lastSyncStatus: 'error', lastError: err.message },
+      stats: { ...current.stats, lastSyncStatus: 'error', lastError: err.message, lastSyncAt: Date.now() },
     });
     chrome.alarms.create('retry-sync', { delayInMinutes: 2 });
     throw err;
   } finally {
     muted = false;
   }
+}
+
+// Explicit target wins; otherwise resolve the default path against the account
+// and persist it so the UI and push handlers see it (persisting null -> id does
+// not trigger a map reset, so it is safe here).
+async function resolveTargetCollectionId(settings, collections) {
+  if (settings.targetCollectionId) return settings.targetCollectionId;
+  const id = findCollectionIdByPath(collections, DEFAULT_TARGET_PATH);
+  if (id) await saveSettings({ targetCollectionId: id, targetCollectionPath: DEFAULT_TARGET_PATH });
+  return id;
 }
 
 // Apply remote deletes that previously failed (e.g. offline). Reconciling
@@ -167,7 +190,9 @@ function groupCollectionsByParent(collections) {
 }
 
 // Reconcile one (collectionId, folderNodeId) pair depth-first. Maps are
-// rebuilt fresh from surviving matches, so stale entries are pruned.
+// rebuilt fresh from surviving matches, so stale entries are pruned. Returns
+// whether this subtree ended up holding any bookmarks, so the caller can prune
+// folders that reconciled to empty (see reconcileFolders).
 async function reconcilePair(collectionId, folderNodeId, ctx) {
   const { api, byParent, oldFolderMap, oldBookmarkMap, newFolderMap, newBookmarkMap, counters } = ctx;
 
@@ -182,12 +207,39 @@ async function reconcilePair(collectionId, folderNodeId, ctx) {
     oldBookmarkMap, newBookmarkMap, counters,
   });
 
-  await reconcileFolders({
+  const childHasContent = await reconcileFolders({
     api, collectionId, folderNodeId, childCollections, localFolders,
     oldFolderMap, newFolderMap, counters, ctx,
   });
 
   await enforceOrdering(folderNodeId);
+
+  const after = await chrome.bookmarks.getChildren(folderNodeId);
+  return after.some((c) => c.url) || childHasContent;
+}
+
+// Does this local folder hold at least one bookmark anywhere in its subtree?
+async function localSubtreeHasBookmarks(nodeId) {
+  const children = await chrome.bookmarks.getChildren(nodeId);
+  for (const child of children) {
+    if (child.url) return true;
+    if (await localSubtreeHasBookmarks(child.id)) return true;
+  }
+  return false;
+}
+
+// Delete an empty folder locally and its (now-empty) remote collection. If the
+// remote delete fails, the local folder is left so the next sync can retry.
+async function removeEmptyPair(nodeId, collectionId, ctx) {
+  try {
+    if (collectionId != null) await ctx.api.deleteCollection(collectionId);
+  } catch (err) {
+    console.error('Could not delete empty collection, leaving folder for next sync:', err);
+    return;
+  }
+  await chrome.bookmarks.removeTree(nodeId);
+  delete ctx.newFolderMap[nodeId];
+  ctx.counters.deleted++;
 }
 
 // Keep every synced folder sorted: folders first, then bookmarks, both
@@ -258,9 +310,13 @@ async function reconcileBookmarks(p) {
   }
 }
 
+// Returns whether any surviving child folder holds bookmarks. When
+// deleteEmptyFolders is on, child folders that reconcile to empty are removed
+// (both the local folder and its remote collection).
 async function reconcileFolders(p) {
   const { api, collectionId, folderNodeId, childCollections, localFolders, oldFolderMap, newFolderMap, counters, ctx } = p;
   const available = new Set(localFolders.map((f) => f.id));
+  let anyContent = false;
 
   for (const cc of childCollections) {
     let match = localFolders.find((f) => available.has(f.id) && oldFolderMap[f.id] === cc._id);
@@ -280,7 +336,9 @@ async function reconcileFolders(p) {
       counters.created++;
     }
     newFolderMap[childNodeId] = cc._id;
-    await reconcilePair(cc._id, childNodeId, ctx);
+    const hasContent = await reconcilePair(cc._id, childNodeId, ctx);
+    if (hasContent) anyContent = true;
+    else if (ctx.deleteEmptyFolders) await removeEmptyPair(childNodeId, cc._id, ctx);
   }
 
   for (const f of localFolders) {
@@ -290,15 +348,24 @@ async function reconcileFolders(p) {
       // Its descendants simply never get re-added to the fresh maps.
       await chrome.bookmarks.removeTree(f.id);
       counters.deleted++;
+    } else if (!(await localSubtreeHasBookmarks(f.id))) {
+      // New but empty (e.g. a placeholder folder from another sync tool):
+      // never push it up. Remove it when pruning empties, else leave it be.
+      if (ctx.deleteEmptyFolders) {
+        await chrome.bookmarks.removeTree(f.id);
+        counters.deleted++;
+      }
     } else {
-      // New folder locally -> create the collection, then recurse as a
+      // New folder with content -> create the collection, then recurse as a
       // matched pair so its contents get pushed up too.
       const item = await api.createCollection(f.title, collectionId);
       newFolderMap[f.id] = item._id;
       counters.created++;
-      await reconcilePair(item._id, f.id, ctx);
+      if (await reconcilePair(item._id, f.id, ctx)) anyContent = true;
     }
   }
+
+  return anyContent;
 }
 
 // --- Push handlers (local -> Raindrop) -----------------------------------
@@ -317,12 +384,14 @@ export async function handleBookmarkCreated(id, node) {
     if (!(await isInBarSubtree(id, barId))) return;
     // Already mapped: this event came from our own sync mutations.
     if (state.bookmarkMap[id] || state.folderMap[id]) return;
-
-    const parentCol = resolveParentCollectionId(node.parentId, state.folderMap, barId, settings.targetCollectionId);
-    if (!parentCol) return;
+    // Empty folder (e.g. a placeholder from another sync tool): ignore it
+    // entirely so it neither creates a collection nor an ancestor chain.
+    if (!node.url && !(await localSubtreeHasBookmarks(id))) return;
 
     const counters = newCounters();
     try {
+      const parentCol = await ensureParentCollection(node.parentId, api, state, barId, settings.targetCollectionId, counters);
+      if (!parentCol) return;
       await pushNode(node, parentCol, api, state, counters);
     } catch (err) {
       schedulePushRetry(err);
@@ -377,7 +446,7 @@ export async function handleBookmarkMoved(id, moveInfo) {
     const counters = newCounters();
     try {
       if (nowIn && !wasIn) {
-        const parentCol = resolveParentCollectionId(moveInfo.parentId, state.folderMap, barId, settings.targetCollectionId);
+        const parentCol = await ensureParentCollection(moveInfo.parentId, api, state, barId, settings.targetCollectionId, counters);
         if (parentCol) {
           const [node] = await chrome.bookmarks.get(id);
           await pushNode(node, parentCol, api, state, counters);
@@ -386,7 +455,7 @@ export async function handleBookmarkMoved(id, moveInfo) {
         await deleteRemoteForNode(id, api, state, counters);
       } else {
         // Moved within the subtree -> re-parent remotely.
-        const parentCol = resolveParentCollectionId(moveInfo.parentId, state.folderMap, barId, settings.targetCollectionId);
+        const parentCol = await ensureParentCollection(moveInfo.parentId, api, state, barId, settings.targetCollectionId, counters);
         const rdId = state.bookmarkMap[id];
         const colId = state.folderMap[id];
         if (rdId && parentCol) {
@@ -435,9 +504,30 @@ async function pushContext() {
   return { settings, barId, api, state };
 }
 
-function resolveParentCollectionId(parentNodeId, folderMap, barId, targetId) {
-  if (parentNodeId === barId) return targetId;
-  return folderMap[parentNodeId] || null;
+// Resolve the remote collection a node's parent maps to, creating the missing
+// ancestor collection chain on demand. Only ever called just before pushing
+// real content up, so creating the parents here is warranted - it means an
+// empty folder never gets a collection, but the moment content lands inside it
+// the chain is built (see the empty-folder guard in pushNode/reconcileFolders).
+async function ensureParentCollection(parentNodeId, api, state, barId, targetId, counters) {
+  if (parentNodeId === barId) return targetId || null;
+  if (state.folderMap[parentNodeId]) return state.folderMap[parentNodeId];
+
+  let node;
+  try {
+    [node] = await chrome.bookmarks.get(parentNodeId);
+  } catch {
+    return null;
+  }
+  if (!node || node.url) return null;
+
+  const grandParentCol = await ensureParentCollection(node.parentId, api, state, barId, targetId, counters);
+  if (!grandParentCol) return null;
+
+  const collection = await api.createCollection(node.title, grandParentCol);
+  state.folderMap[parentNodeId] = collection._id;
+  counters.created++;
+  return collection._id;
 }
 
 // Walk the parentId chain up to the bar node. nodeId may be the bar itself.
@@ -465,6 +555,9 @@ async function pushNode(node, parentCollectionId, api, state, counters) {
     counters.created++;
     return;
   }
+  // Guard: never create a collection for an empty folder. This stops other
+  // bookmark-sync tools' placeholder folders from spawning junk collections.
+  if (!(await localSubtreeHasBookmarks(node.id))) return;
   const collection = await api.createCollection(node.title, parentCollectionId);
   state.folderMap[node.id] = collection._id;
   counters.created++;

@@ -181,6 +181,30 @@ function sortByTitle(collections) {
   return [...collections].sort((a, b) => a.title.localeCompare(b.title));
 }
 
+// Resolve a slash-separated collection path (e.g. 'Chrome/Bookmarks') to a
+// collection id, matching titles level by level. Returns null if not found.
+// A collection counts as a root when its parent is absent from the set (same
+// rule as buildCollectionTree).
+export function findCollectionIdByPath(collections, path) {
+  const names = path.split('/').map((s) => s.trim()).filter(Boolean);
+  if (names.length === 0) return null;
+
+  const byId = new Map(collections.map((c) => [c._id, c]));
+  const parentIdOf = (c) => {
+    const pid = c.parent?.$id;
+    return pid != null && byId.has(pid) ? pid : null;
+  };
+
+  let parentId = null;
+  let current = null;
+  for (const name of names) {
+    current = collections.find((c) => c.title === name && parentIdOf(c) === parentId);
+    if (!current) return null;
+    parentId = current._id;
+  }
+  return current._id;
+}
+
 export function collectionPath(collections, id) {
   const byId = new Map(collections.map((c) => [c._id, c]));
   const titles = [];

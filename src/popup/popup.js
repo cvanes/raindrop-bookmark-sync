@@ -23,6 +23,11 @@ const els = {
   workspaceList: document.getElementById('workspace-list'),
   loadMessage: document.getElementById('load-message'),
   settingsLink: document.getElementById('settings-link'),
+  modalOverlay: document.getElementById('modal-overlay'),
+  modalTitle: document.getElementById('modal-title'),
+  modalMessage: document.getElementById('modal-message'),
+  modalConfirm: document.getElementById('modal-confirm'),
+  modalCancel: document.getElementById('modal-cancel'),
 };
 
 // Shared icon language: arrow-into-folder = write it (window stays open),
@@ -328,18 +333,37 @@ function actionButton(icon, label, extraClass) {
   return button;
 }
 
-// First click arms a brief confirmation; the second click runs the action.
-function armConfirm(button, label) {
-  if (button.classList.contains('is-confirming')) return true;
-  const original = button.innerHTML;
-  button.classList.add('is-confirming');
-  button.textContent = label;
-  setTimeout(() => {
-    if (!button.isConnected) return;
-    button.classList.remove('is-confirming');
-    button.innerHTML = original;
-  }, 3000);
-  return false;
+// A modal confirmation. Resolves true if confirmed, false otherwise. Backdrop
+// click and Escape cancel; Enter confirms.
+function confirmModal({ title, message, confirmLabel = 'Confirm' }) {
+  return new Promise((resolve) => {
+    els.modalTitle.textContent = title;
+    els.modalMessage.textContent = message;
+    els.modalConfirm.textContent = confirmLabel;
+    els.modalOverlay.hidden = false;
+    els.modalConfirm.focus();
+
+    const close = (result) => {
+      els.modalOverlay.hidden = true;
+      els.modalConfirm.removeEventListener('click', onConfirm);
+      els.modalCancel.removeEventListener('click', onCancel);
+      els.modalOverlay.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onConfirm = () => close(true);
+    const onCancel = () => close(false);
+    const onBackdrop = (event) => { if (event.target === els.modalOverlay) close(false); };
+    const onKey = (event) => {
+      if (event.key === 'Escape') close(false);
+      else if (event.key === 'Enter') { event.preventDefault(); close(true); }
+    };
+
+    els.modalConfirm.addEventListener('click', onConfirm);
+    els.modalCancel.addEventListener('click', onCancel);
+    els.modalOverlay.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+  });
 }
 
 async function handleLoadWorkspace(workspace, button) {
@@ -357,7 +381,12 @@ async function handleLoadWorkspace(workspace, button) {
 }
 
 async function handleUpdateWorkspace(workspace, button, closeWindow) {
-  if (!armConfirm(button, 'Replace?')) return;
+  const confirmed = await confirmModal({
+    title: 'Replace collection?',
+    message: `Replace “${workspace.title}” with this window's tabs? Its current bookmarks move to Raindrop's trash.`,
+    confirmLabel: closeWindow ? 'Replace and close' : 'Replace',
+  });
+  if (!confirmed) return;
 
   button.disabled = true;
   try {
@@ -372,7 +401,12 @@ async function handleUpdateWorkspace(workspace, button, closeWindow) {
 }
 
 async function handleDeleteWorkspace(workspace, button) {
-  if (!armConfirm(button, 'Delete?')) return;
+  const confirmed = await confirmModal({
+    title: 'Delete collection?',
+    message: `Delete “${workspace.title}”? Its bookmarks move to Raindrop's trash.`,
+    confirmLabel: 'Delete',
+  });
+  if (!confirmed) return;
 
   button.disabled = true;
   try {

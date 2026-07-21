@@ -94,12 +94,10 @@ src/lib/         Raindrop API client and storage helpers
 src/background/  service worker: sync engine, workspaces, message router
 src/options/     settings page
 src/popup/       toolbar popup
-test/            end-to-end test harness
 ```
 
-Run the end-to-end tests with `./test/run-e2e.sh` (requires Node 22+, openssl and Microsoft
-Edge). It loads the extension into a disposable browser profile and exercises every sync,
-conflict and workspace flow against a local mock of the Raindrop API - no account needed.
-To run the same suite against the real API: `RD_BASE=https://api.raindrop.io
-RAINDROP_TOKEN=<test token> node test/e2e.mjs` (it creates and removes `SyncTest-*`
-collections in that account).
+Syntax-check changed files with `node --check <file>.js`. For behavioural checks, load the
+unpacked extension into Chrome Beta (`chrome://extensions` → Developer mode → Load unpacked)
+and exercise the flows manually; the chrome-devtools MCP can drive the options page and
+popup. There is no automated e2e harness - manual verification against a throwaway
+Raindrop collection is the workflow.
